@@ -405,6 +405,19 @@
                                     <i class="fas fa-arrow-right ml-auto opacity-0 group-hover:opacity-100 transition-opacity duration-300"></i>
                                 </div>
                             </button>
+                            
+                            <button
+                                onclick="quickLogin('admin@frugal.com')"
+                                class="w-full bg-white/10 hover:bg-white/20 text-white py-3 px-4 rounded-2xl transition-all duration-300 border border-white/20 hover:border-white/40 backdrop-blur-sm group"
+                            >
+                                <div class="flex items-center justify-center">
+                                    <div class="w-8 h-8 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-full flex items-center justify-center mr-3">
+                                        <i class="fas fa-crown text-white text-sm"></i>
+                                    </div>
+                                    <span class="font-medium">admin@frugal.com</span>
+                                    <i class="fas fa-arrow-right ml-auto opacity-0 group-hover:opacity-100 transition-opacity duration-300"></i>
+                                </div>
+                            </button>
                         </div>
 
                         <!-- Footer Info -->
@@ -446,7 +459,8 @@
                                             <i class="fas fa-piggy-bank text-white text-lg"></i>
                                         </div>
                                         <div>
-                                            <h1 class="text-xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">Frugal Living</h1>
+                                            <h1 class="text-lg sm:text-xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">Frugal Living</h1>
+                                            <p class="text-xs sm:text-xs text-gray-500 -mt-1 hidden sm:block">Kelola Keuangan Pintar</p>
                                         </div>
                                     </div>
                                 </div>
@@ -454,14 +468,14 @@
                                 <div class="flex items-center space-x-4">
                                     <button
                                         onclick="showQuickAddModal()"
-                                        class="bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 hover:from-blue-600 hover:via-purple-600 hover:to-pink-600 text-white px-4 py-2 rounded-2xl font-semibold shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300 relative overflow-hidden group"
+                                        class="bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 hover:from-blue-600 hover:via-purple-600 hover:to-pink-600 text-white px-3 sm:px-4 py-2 sm:py-2 rounded-xl sm:rounded-2xl font-semibold shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300 relative overflow-hidden group"
                                     >
                                         <div class="absolute inset-0 bg-gradient-to-r from-white/0 via-white/20 to-white/0 transform -skew-x-12 -translate-x-full group-hover:translate-x-full transition-transform duration-700"></div>
                                         <div class="relative flex items-center">
-                                            <div class="w-4 h-4 bg-white/20 rounded-full flex items-center justify-center mr-2 group-hover:rotate-180 transition-transform duration-300">
-                                                <i class="fas fa-plus text-xs"></i>
+                                            <div class="w-3 h-3 sm:w-4 sm:h-4 bg-white/20 rounded-full flex items-center justify-center mr-1 sm:mr-2 group-hover:rotate-12 transition-transform duration-300">
+                                                <i class="fas fa-paper-plane text-xs"></i>
                                             </div>
-                                            <span class="text-sm">✨ Tambah</span>
+                                            <span class="text-xs sm:text-sm">✈️ <span class="hidden xs:inline">Tambah</span><span class="xs:hidden">+</span></span>
                                         </div>
                                     </button>
                                     <div class="flex items-center space-x-3 bg-white/60 backdrop-blur-sm px-4 py-2 rounded-2xl border border-white/40">
@@ -857,7 +871,7 @@
                             <p class="text-gray-600 text-sm sm:text-base mt-1">Kelola semua transaksi keuangan Anda</p>
                         </div>
                         <button onclick="showQuickAddModal()" class="w-full sm:w-auto bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white px-4 sm:px-6 py-3 sm:py-2 rounded-2xl font-semibold shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300 flex items-center justify-center">
-                            <i class="fas fa-plus mr-2"></i>
+                            <i class="fas fa-paper-plane mr-2"></i>
                             <span class="text-sm sm:text-base">Tambah Transaksi</span>
                         </button>
                     </div>
@@ -936,7 +950,7 @@
                             <p class="text-gray-600 text-sm sm:text-base mt-1">Kelola anggaran bulanan Anda</p>
                         </div>
                         <button onclick="showAddBudgetForm()" class="w-full sm:w-auto bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white px-4 sm:px-6 py-3 sm:py-2 rounded-2xl font-semibold shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300 flex items-center justify-center">
-                            <i class="fas fa-plus mr-2"></i>
+                            <i class="fas fa-paper-plane mr-2"></i>
                             <span class="text-sm sm:text-base">Tambah Anggaran</span>
                         </button>
                     </div>
@@ -1035,7 +1049,7 @@
                             <p class="text-gray-600 text-sm sm:text-base mt-1">Wujudkan impian finansial Anda</p>
                         </div>
                         <button onclick="showAddGoalForm()" class="w-full sm:w-auto bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white px-4 sm:px-6 py-3 sm:py-2 rounded-2xl font-semibold shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300 flex items-center justify-center">
-                            <i class="fas fa-plus mr-2"></i>
+                            <i class="fas fa-paper-plane mr-2"></i>
                             <span class="text-sm sm:text-base">Tambah Target</span>
                         </button>
                     </div>
@@ -1684,10 +1698,10 @@
                                 <div class="flex-1">
                                     <div class="flex items-center mb-2">
                                         <div class="w-10 h-10 sm:w-12 sm:h-12 bg-white/20 rounded-2xl flex items-center justify-center mr-3 backdrop-blur-sm">
-                                            <i class="fas fa-plus text-lg sm:text-xl"></i>
+                                            <i class="fas fa-paper-plane text-lg sm:text-xl"></i>
                                         </div>
                                         <div>
-                                            <h3 class="text-xl sm:text-2xl font-bold">✨ Tambah Transaksi</h3>
+                                            <h3 class="text-xl sm:text-2xl font-bold">Tambah Transaksi</h3>
                                             <p class="text-white/90 text-xs sm:text-sm mt-1">Catat keuangan dengan mudah</p>
                                         </div>
                                     </div>
@@ -1826,10 +1840,10 @@
                                     >
                                         <div class="absolute inset-0 bg-gradient-to-r from-white/0 via-white/20 to-white/0 transform -skew-x-12 -translate-x-full group-hover:translate-x-full transition-transform duration-1000"></div>
                                         <div class="relative flex items-center justify-center">
-                                            <div class="w-6 h-6 sm:w-8 sm:h-8 bg-white/20 rounded-full flex items-center justify-center mr-2 sm:mr-3 group-hover:rotate-180 transition-transform duration-300">
-                                                <i class="fas fa-save text-sm sm:text-lg"></i>
+                                            <div class="w-6 h-6 sm:w-8 sm:h-8 bg-white/20 rounded-full flex items-center justify-center mr-2 sm:mr-3 group-hover:rotate-12 transition-transform duration-300">
+                                                <i class="fas fa-paper-plane text-sm sm:text-lg"></i>
                                             </div>
-                                            <span class="text-base sm:text-xl">💾 Simpan Transaksi</span>
+                                            <span class="text-base sm:text-xl">✈️ Kirim Transaksi</span>
                                         </div>
                                     </button>
                                 </div>
@@ -3442,8 +3456,5 @@
         auth.init();
         render();
     </script>
-<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'980abbe336628bc8',t:'MTc1ODEzNDQ0Ny4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'980acae717a36bca',t:'MTc1ODEzNTA2Mi4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>
-
-
-
