@@ -81,8 +81,8 @@
 
     <script>
         // Supabase Configuration - GANTI DENGAN CREDENTIALS ANDA
-        const SUPABASE_URL = 'https://fyjwyfytdprdkpmduoxt.supabase.co'; // Contoh: https://abcdefghijk.supabase.co
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ5and5Znl0ZHByZGtwbWR1b3h0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTgxMjk1MTgsImV4cCI6MjA3MzcwNTUxOH0.DwIF3vCAt4-acGt3nfd7-KjZodzcxPM867u14XBlKJE'; // Anon key dari Supabase Dashboard > Settings > API
+        const SUPABASE_URL = 'https://your-project-id.supabase.co'; // Contoh: https://abcdefghijk.supabase.co
+        const SUPABASE_ANON_KEY = 'your-anon-key-here'; // Anon key dari Supabase Dashboard > Settings > API
         
         // Initialize Supabase client
         const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -191,51 +191,41 @@
         // Mock authentication with PIN system
         const auth = {
             login: (email, pin = null) => {
-                const validEmails = ['demo@frugal.com', 'user@example.com', 'test@budget.com', 'admin@frugal.com'];
-                if (validEmails.includes(email)) {
-                    const userId = email.replace(/[@.]/g, '_');
-                    let storedPin = localStorage.getItem(`pin_${userId}`);
-                    
-                    // Set demo PIN for demo@frugal.com if not exists
-                    if (email === 'demo@frugal.com' && !storedPin) {
-                        localStorage.setItem(`pin_demo_frugal_com`, '123456');
+                const userId = email.replace(/[@.]/g, '_');
+                let storedPin = localStorage.getItem(`pin_${userId}`);
+                
+                // Check if user exists (has a PIN stored)
+                if (!storedPin) {
+                    // Set default PINs for predefined users if they don't exist
+                    if (email === 'demo@frugal.com') {
+                        localStorage.setItem(`pin_${userId}`, '123456');
                         storedPin = '123456';
-                    }
-                    
-                    // Set admin PIN for admin@frugal.com if not exists
-                    if (email === 'admin@frugal.com' && !storedPin) {
-                        localStorage.setItem(`pin_admin_frugal_com`, '999999');
+                    } else if (email === 'admin@frugal.com') {
+                        localStorage.setItem(`pin_${userId}`, '999999');
                         storedPin = '999999';
+                    } else if (['user@example.com', 'test@budget.com'].includes(email)) {
+                        localStorage.setItem(`pin_${userId}`, '000000');
+                        storedPin = '000000';
+                    } else {
+                        // User doesn't exist
+                        return { success: false, error: 'Email tidak terdaftar. Gunakan: demo@frugal.com, user@example.com, test@budget.com, atau minta admin untuk membuat akun Anda.' };
                     }
-                    
-                    // Always require PIN for all valid emails
-                    if (!pin) {
-                        return { success: false, needPin: true };
-                    }
-                    
-                    // If PIN is provided, check if it matches (or set default for new users)
-                    if (!storedPin) {
-                        // For new users without PIN, set a default PIN
-                        if (email === 'demo@frugal.com') {
-                            storedPin = '123456';
-                        } else if (email === 'admin@frugal.com') {
-                            storedPin = '999999'; // Admin PIN
-                        } else {
-                            storedPin = '000000'; // Default PIN for other emails
-                        }
-                        localStorage.setItem(`pin_${userId}`, storedPin);
-                    }
-                    
-                    if (pin !== storedPin) {
-                        return { success: false, error: 'PIN salah' };
-                    }
-                    
-                    const isAdmin = email === 'admin@frugal.com';
-                    appState.user = { email, id: userId, role: isAdmin ? 'admin' : 'user' };
-                    localStorage.setItem('frugal_user', JSON.stringify(appState.user));
-                    return { success: true };
                 }
-                return { success: false, error: 'Email tidak terdaftar' };
+                
+                // Always require PIN for all users
+                if (!pin) {
+                    return { success: false, needPin: true };
+                }
+                
+                // Check if PIN matches
+                if (pin !== storedPin) {
+                    return { success: false, error: 'PIN salah' };
+                }
+                
+                const isAdmin = email === 'admin@frugal.com';
+                appState.user = { email, id: userId, role: isAdmin ? 'admin' : 'user' };
+                localStorage.setItem('frugal_user', JSON.stringify(appState.user));
+                return { success: true };
             },
             logout: () => {
                 appState.user = null;
@@ -3464,5 +3454,5 @@
         auth.init();
         render();
     </script>
-<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'980a59d0e3e0daa5',t:'MTc1ODEzMDQyOS4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'980a8b71658544c6',t:'MTc1ODEzMjQ2Mi4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>
