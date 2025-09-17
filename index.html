@@ -83,11 +83,30 @@
 
     <script>
         // Supabase Configuration - GANTI DENGAN CREDENTIALS ANDA
-        const SUPABASE_URL = 'https://fyjwyfytdprdkpmduoxt.supabase.co'; // Contoh: https://abcdefghijk.supabase.co
+        const SUPABASE_URL = 'https://fyjwyfytdprdkpmduoxt.supabase.co; // Contoh: https://abcdefghijk.supabase.co
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ5and5Znl0ZHByZGtwbWR1b3h0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTgxMjk1MTgsImV4cCI6MjA3MzcwNTUxOH0.DwIF3vCAt4-acGt3nfd7-KjZodzcxPM867u14XBlKJE'; // Anon key dari Supabase Dashboard > Settings > API
         
         // Initialize Supabase client
-        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        let supabase = null;
+        let useSupabase = false;
+        
+        // Check if Supabase credentials are configured
+        if (SUPABASE_URL !== 'https://fyjwyfytdprdkpmduoxt.supabase.co' && SUPABASE_ANON_KEY !== 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ5and5Znl0ZHByZGtwbWR1b3h0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTgxMjk1MTgsImV4cCI6MjA3MzcwNTUxOH0.DwIF3vCAt4-acGt3nfd7-KjZodzcxPM867u14XBlKJE') {
+            try {
+                supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+                useSupabase = true;
+                console.log('✅ Supabase initialized successfully');
+            } catch (error) {
+                console.error('❌ Supabase initialization failed:', error);
+                useSupabase = false;
+            }
+        } else {
+            console.log('⚠️ Supabase not configured - using localStorage only');
+            console.log('📝 To enable Supabase:');
+            console.log('1. Create a Supabase project at https://supabase.com');
+            console.log('2. Replace SUPABASE_URL and SUPABASE_ANON_KEY with your credentials');
+            console.log('3. Create the required tables (see setup instructions below)');
+        }
         
         // Simple state management
         let appState = {
@@ -266,31 +285,99 @@
         };
 
         // Data management
-        function loadUserData() {
+        async function loadUserData() {
             if (!appState.user) return;
             
             const userId = appState.user.id;
+            
+            if (useSupabase) {
+                try {
+                    console.log('🔄 Loading data from Supabase...');
+                    
+                    // Load transactions
+                    const { data: transactions, error: transError } = await db.getTransactions(userId);
+                    if (transError) throw transError;
+                    appState.transactions = transactions || [];
+                    
+                    // Load budgets
+                    const { data: budgets, error: budgetError } = await db.getBudgets(userId);
+                    if (budgetError) throw budgetError;
+                    appState.budgets = budgets || [];
+                    
+                    // Load goals
+                    const { data: goals, error: goalError } = await db.getGoals(userId);
+                    if (goalError) throw goalError;
+                    appState.goals = goals || [];
+                    
+                    console.log('✅ Data loaded from Supabase:', {
+                        transactions: appState.transactions.length,
+                        budgets: appState.budgets.length,
+                        goals: appState.goals.length
+                    });
+                    
+                    // Also save to localStorage as backup
+                    localStorage.setItem(`transactions_${userId}`, JSON.stringify(appState.transactions));
+                    localStorage.setItem(`budgets_${userId}`, JSON.stringify(appState.budgets));
+                    localStorage.setItem(`goals_${userId}`, JSON.stringify(appState.goals));
+                    
+                } catch (error) {
+                    console.error('❌ Error loading from Supabase, falling back to localStorage:', error);
+                    loadFromLocalStorage(userId);
+                }
+            } else {
+                loadFromLocalStorage(userId);
+            }
+        }
+        
+        function loadFromLocalStorage(userId) {
             appState.transactions = JSON.parse(localStorage.getItem(`transactions_${userId}`) || '[]');
             appState.budgets = JSON.parse(localStorage.getItem(`budgets_${userId}`) || '[]');
             appState.goals = JSON.parse(localStorage.getItem(`goals_${userId}`) || '[]');
+            console.log('📱 Data loaded from localStorage:', {
+                transactions: appState.transactions.length,
+                budgets: appState.budgets.length,
+                goals: appState.goals.length
+            });
         }
 
-        function saveTransaction(transaction) {
+        async function saveTransaction(transaction) {
             if (!appState.user) return;
             
             const userId = appState.user.id;
             transaction.id = Date.now();
-            transaction.createdAt = new Date().toISOString();
+            transaction.user_id = userId;
+            transaction.created_at = new Date().toISOString();
+            
+            // Add to local state first
             appState.transactions.push(transaction);
             
             try {
+                // Save to localStorage
                 localStorage.setItem(`transactions_${userId}`, JSON.stringify(appState.transactions));
-                showSyncStatus('success', 'Transaksi berhasil disimpan');
+                
+                // Save to Supabase if configured
+                if (useSupabase) {
+                    console.log('💾 Saving transaction to Supabase...');
+                    const { data, error } = await db.createTransaction(transaction);
+                    if (error) {
+                        console.error('❌ Supabase save error:', error);
+                        showSyncStatus('error', 'Tersimpan lokal, gagal sync ke cloud');
+                    } else {
+                        console.log('✅ Transaction saved to Supabase:', data);
+                        showSyncStatus('success', 'Transaksi tersimpan & tersinkronisasi');
+                    }
+                } else {
+                    showSyncStatus('success', 'Transaksi tersimpan (lokal)');
+                }
+                
                 console.log('✅ Transaction saved:', transaction);
                 console.log('📊 Total transactions for user:', appState.transactions.length);
+                
             } catch (error) {
                 console.error('❌ Error saving transaction:', error);
                 showSyncStatus('error', 'Gagal menyimpan transaksi');
+                // Remove from local state if save failed
+                appState.transactions.pop();
             }
         }
 
@@ -472,7 +559,7 @@
                                             <div class="w-3 h-3 sm:w-4 sm:h-4 bg-white/20 rounded-full flex items-center justify-center mr-1 sm:mr-2 group-hover:rotate-12 transition-transform duration-300">
                                                 <i class="fas fa-paper-plane text-xs"></i>
                                             </div>
-                                            <span class="text-xs sm:text-sm"><span class="hidden xs:inline">Tambah</span><span class="xs:hidden">Quick Add</span></span>
+                                            <span class="text-xs sm:text-sm">✈️ <span class="hidden xs:inline">Tambah</span><span class="xs:hidden">+</span></span>
                                         </div>
                                     </button>
                                     <div class="flex items-center space-x-3 bg-white/60 backdrop-blur-sm px-4 py-2 rounded-2xl border border-white/40">
@@ -563,9 +650,9 @@
             ];
             
             const adminMenuItems = [
-                { id: 'admin-dashboard', label: 'Admin Dashboard', icon: 'fas fa-crown' },
-                { id: 'user-management', label: 'Kelola User', icon: 'fas fa-users' },
-                { id: 'system-reports', label: 'Laporan Sistem', icon: 'fas fa-chart-area' }
+                { id: 'admin-dashboard', label: '👑 Admin Dashboard', icon: 'fas fa-crown' },
+                { id: 'user-management', label: '👥 Kelola User', icon: 'fas fa-users' },
+                { id: 'system-reports', label: '📊 Laporan Sistem', icon: 'fas fa-chart-area' }
             ];
             
             const menuItems = appState.user?.role === 'admin' 
@@ -1677,6 +1764,118 @@
                         </div>
                     </div>
 
+                    <!-- Supabase Configuration Panel -->
+                    <div class="bg-white/70 backdrop-blur-sm rounded-3xl p-6 sm:p-8 shadow-xl border border-white/20">
+                        <div class="flex items-center mb-6">
+                            <div class="w-8 h-8 bg-gradient-to-br from-green-400 to-emerald-500 rounded-2xl flex items-center justify-center mr-3 shadow-lg">
+                                <i class="fas fa-cloud text-white text-sm"></i>
+                            </div>
+                            <h3 class="text-lg sm:text-xl font-bold text-gray-800">Konfigurasi Supabase</h3>
+                        </div>
+                        
+                        <!-- Supabase Status -->
+                        <div class="mb-6 p-4 bg-gradient-to-r from-${useSupabase ? 'green' : 'yellow'}-50 to-${useSupabase ? 'emerald' : 'orange'}-50 rounded-2xl border border-${useSupabase ? 'green' : 'yellow'}-200">
+                            <h4 class="font-semibold text-${useSupabase ? 'green' : 'yellow'}-800 mb-3 flex items-center">
+                                <i class="fas fa-${useSupabase ? 'check-circle' : 'exclamation-triangle'} mr-2"></i>
+                                Status Supabase: ${useSupabase ? 'Terhubung' : 'Tidak Terkonfigurasi'}
+                            </h4>
+                            <p class="text-${useSupabase ? 'green' : 'yellow'}-700 text-sm">
+                                ${useSupabase ? 
+                                    'Data Anda tersinkronisasi dengan cloud database Supabase. Aman dan dapat diakses dari perangkat lain.' : 
+                                    'Saat ini menggunakan localStorage. Data hanya tersimpan di browser ini.'
+                                }
+                            </p>
+                        </div>
+                        
+                        ${!useSupabase ? `
+                            <!-- Setup Instructions -->
+                            <div class="bg-blue-50 rounded-2xl p-4 mb-6 border border-blue-200">
+                                <h4 class="font-semibold text-blue-800 mb-3 flex items-center">
+                                    <i class="fas fa-rocket mr-2"></i>
+                                    Cara Setup Supabase (Gratis)
+                                </h4>
+                                <div class="space-y-3 text-sm text-blue-700">
+                                    <div class="flex items-start">
+                                        <span class="bg-blue-200 text-blue-800 rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold mr-3 mt-0.5 flex-shrink-0">1</span>
+                                        <div>
+                                            <p class="font-medium">Buat Akun Supabase</p>
+                                            <p class="text-blue-600">Kunjungi <a href="https://supabase.com" target="_blank" class="underline font-medium">supabase.com</a> dan buat akun gratis</p>
+                                        </div>
+                                    </div>
+                                    <div class="flex items-start">
+                                        <span class="bg-blue-200 text-blue-800 rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold mr-3 mt-0.5 flex-shrink-0">2</span>
+                                        <div>
+                                            <p class="font-medium">Buat Project Baru</p>
+                                            <p class="text-blue-600">Klik "New Project" dan isi nama project (contoh: "frugal-living")</p>
+                                        </div>
+                                    </div>
+                                    <div class="flex items-start">
+                                        <span class="bg-blue-200 text-blue-800 rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold mr-3 mt-0.5 flex-shrink-0">3</span>
+                                        <div>
+                                            <p class="font-medium">Buat Tabel Database</p>
+                                            <p class="text-blue-600">Jalankan SQL berikut di SQL Editor:</p>
+                                            <div class="bg-gray-800 text-green-400 p-3 rounded-xl font-mono text-xs mt-2 overflow-x-auto">
+                                                <div>-- Tabel Users</div>
+                                                <div>CREATE TABLE users (</div>
+                                                <div>&nbsp;&nbsp;id TEXT PRIMARY KEY,</div>
+                                                <div>&nbsp;&nbsp;email TEXT UNIQUE NOT NULL,</div>
+                                                <div>&nbsp;&nbsp;created_at TIMESTAMP DEFAULT NOW()</div>
+                                                <div>);</div>
+                                                <br>
+                                                <div>-- Tabel Transactions</div>
+                                                <div>CREATE TABLE transactions (</div>
+                                                <div>&nbsp;&nbsp;id BIGINT PRIMARY KEY,</div>
+                                                <div>&nbsp;&nbsp;user_id TEXT REFERENCES users(id),</div>
+                                                <div>&nbsp;&nbsp;type TEXT NOT NULL,</div>
+                                                <div>&nbsp;&nbsp;amount DECIMAL NOT NULL,</div>
+                                                <div>&nbsp;&nbsp;category TEXT NOT NULL,</div>
+                                                <div>&nbsp;&nbsp;description TEXT NOT NULL,</div>
+                                                <div>&nbsp;&nbsp;date DATE NOT NULL,</div>
+                                                <div>&nbsp;&nbsp;created_at TIMESTAMP DEFAULT NOW()</div>
+                                                <div>);</div>
+                                                <br>
+                                                <div>-- Tabel Budgets</div>
+                                                <div>CREATE TABLE budgets (</div>
+                                                <div>&nbsp;&nbsp;id BIGINT PRIMARY KEY,</div>
+                                                <div>&nbsp;&nbsp;user_id TEXT REFERENCES users(id),</div>
+                                                <div>&nbsp;&nbsp;category TEXT NOT NULL,</div>
+                                                <div>&nbsp;&nbsp;amount DECIMAL NOT NULL,</div>
+                                                <div>&nbsp;&nbsp;period TEXT NOT NULL,</div>
+                                                <div>&nbsp;&nbsp;created_at TIMESTAMP DEFAULT NOW()</div>
+                                                <div>);</div>
+                                                <br>
+                                                <div>-- Tabel Goals</div>
+                                                <div>CREATE TABLE goals (</div>
+                                                <div>&nbsp;&nbsp;id BIGINT PRIMARY KEY,</div>
+                                                <div>&nbsp;&nbsp;user_id TEXT REFERENCES users(id),</div>
+                                                <div>&nbsp;&nbsp;title TEXT NOT NULL,</div>
+                                                <div>&nbsp;&nbsp;target_amount DECIMAL NOT NULL,</div>
+                                                <div>&nbsp;&nbsp;current_amount DECIMAL DEFAULT 0,</div>
+                                                <div>&nbsp;&nbsp;deadline DATE NOT NULL,</div>
+                                                <div>&nbsp;&nbsp;created_at TIMESTAMP DEFAULT NOW()</div>
+                                                <div>);</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="flex items-start">
+                                        <span class="bg-blue-200 text-blue-800 rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold mr-3 mt-0.5 flex-shrink-0">4</span>
+                                        <div>
+                                            <p class="font-medium">Ambil Credentials</p>
+                                            <p class="text-blue-600">Di Settings → API, copy URL dan anon key</p>
+                                        </div>
+                                    </div>
+                                    <div class="flex items-start">
+                                        <span class="bg-blue-200 text-blue-800 rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold mr-3 mt-0.5 flex-shrink-0">5</span>
+                                        <div>
+                                            <p class="font-medium">Update Kode</p>
+                                            <p class="text-blue-600">Ganti SUPABASE_URL dan SUPABASE_ANON_KEY di kode</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        ` : ''}
+                    </div>
+
                     <!-- Debug & Troubleshooting Panel -->
                     <div class="bg-white/70 backdrop-blur-sm rounded-3xl p-6 sm:p-8 shadow-xl border border-white/20">
                         <div class="flex items-center mb-6">
@@ -1936,7 +2135,7 @@
                                             <div class="w-6 h-6 sm:w-8 sm:h-8 bg-white/20 rounded-full flex items-center justify-center mr-2 sm:mr-3 group-hover:rotate-12 transition-transform duration-300">
                                                 <i class="fas fa-paper-plane text-sm sm:text-lg"></i>
                                             </div>
-                                            <span class="text-base sm:text-xl">Tambah Transaksi</span>
+                                            <span class="text-base sm:text-xl">Kirim Transaksi</span>
                                         </div>
                                     </button>
                                 </div>
@@ -3729,8 +3928,5 @@
             });
         }
     </script>
-<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'980aebd6424840ba',t:'MTc1ODEzNjQxMC4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'980b021753da89b0',t:'MTc1ODEzNzMyMi4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>
-
-
-
