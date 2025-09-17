@@ -83,8 +83,8 @@
 
     <script>
         // Supabase Configuration - GANTI DENGAN CREDENTIALS ANDA
-        const SUPABASE_URL = 'https://your-project-id.supabase.co'; // Contoh: https://abcdefghijk.supabase.co
-        const SUPABASE_ANON_KEY = 'your-anon-key-here'; // Anon key dari Supabase Dashboard > Settings > API
+        const SUPABASE_URL = 'https://fyjwyfytdprdkpmduoxt.supabase.co'; // Contoh: https://abcdefghijk.supabase.co
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ5and5Znl0ZHByZGtwbWR1b3h0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTgxMjk1MTgsImV4cCI6MjA3MzcwNTUxOH0.DwIF3vCAt4-acGt3nfd7-KjZodzcxPM867u14XBlKJE'; // Anon key dari Supabase Dashboard > Settings > API
         
         // Initialize Supabase client
         const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -563,9 +563,9 @@
             ];
             
             const adminMenuItems = [
-                { id: 'admin-dashboard', label: '👑 Admin Dashboard', icon: 'fas fa-crown' },
-                { id: 'user-management', label: '👥 Kelola User', icon: 'fas fa-users' },
-                { id: 'system-reports', label: '📊 Laporan Sistem', icon: 'fas fa-chart-area' }
+                { id: 'admin-dashboard', label: 'Admin Dashboard', icon: 'fas fa-crown' },
+                { id: 'user-management', label: 'Kelola User', icon: 'fas fa-users' },
+                { id: 'system-reports', label: 'Laporan Sistem', icon: 'fas fa-chart-area' }
             ];
             
             const menuItems = appState.user?.role === 'admin' 
@@ -1936,7 +1936,7 @@
                                             <div class="w-6 h-6 sm:w-8 sm:h-8 bg-white/20 rounded-full flex items-center justify-center mr-2 sm:mr-3 group-hover:rotate-12 transition-transform duration-300">
                                                 <i class="fas fa-paper-plane text-sm sm:text-lg"></i>
                                             </div>
-                                            <span class="text-base sm:text-xl">✈️ Kirim Transaksi</span>
+                                            <span class="text-base sm:text-xl">Tambah Transaksi</span>
                                         </div>
                                     </button>
                                 </div>
@@ -3731,4 +3731,5 @@
     </script>
 <script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'980aebd6424840ba',t:'MTc1ODEzNjQxMC4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>
+
 
