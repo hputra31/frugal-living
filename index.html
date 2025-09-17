@@ -82,16 +82,22 @@
     <div id="app"></div>
 
     <script>
-        // Supabase Configuration - GANTI DENGAN CREDENTIALS ANDA
-        const SUPABASE_URL = 'https://fyjwyfytdprdkpmduoxt.supabase.co'; // Contoh: https://abcdefghijk.supabase.co
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ5and5Znl0ZHByZGtwbWR1b3h0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTgxMjk1MTgsImV4cCI6MjA3MzcwNTUxOH0.DwIF3vCAt4-acGt3nfd7-KjZodzcxPM867u14XBlKJE'; // Anon key dari Supabase Dashboard > Settings > API
+        // Supabase Configuration - REPLACE WITH YOUR CREDENTIALS
+        const SUPABASE_URL = 'https://fyjwyfytdprdkpmduoxt.supabase.co'; // Example: https://abcdefghijk.supabase.co
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ5and5Znl0ZHByZGtwbWR1b3h0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTgxMjk1MTgsImV4cCI6MjA3MzcwNTUxOH0.DwIF3vCAt4-acGt3nfd7-KjZodzcxPM867u14XBlKJE'; // Anon key from Supabase Dashboard > Settings > API
+        
+        // 🔧 SETUP INSTRUCTIONS:
+        // 1. Replace SUPABASE_URL with your Project URL from Supabase Dashboard > Settings > API
+        // 2. Replace SUPABASE_ANON_KEY with your anon public key from the same page
+        // 3. Make sure you've run the SQL setup script in your Supabase SQL Editor
+        // 4. Your app will automatically sync data to Supabase once configured!
         
         // Initialize Supabase client
         let supabase = null;
         let useSupabase = false;
         
         // Check if Supabase credentials are configured
-        if (SUPABASE_URL !== 'https://fyjwyfytdprdkpmduoxt.supabase.co' && SUPABASE_ANON_KEY !== 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ5and5Znl0ZHByZGtwbWR1b3h0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTgxMjk1MTgsImV4cCI6MjA3MzcwNTUxOH0.DwIF3vCAt4-acGt3nfd7-KjZodzcxPM867u14XBlKJE') {
+        if (SUPABASE_URL !== 'https://your-project-id.supabase.co' && SUPABASE_ANON_KEY !== 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ5and5Znl0ZHByZGtwbWR1b3h0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTgxMjk1MTgsImV4cCI6MjA3MzcwNTUxOH0.DwIF3vCAt4-acGt3nfd7-KjZodzcxPM867u14XBlKJE') {
             try {
                 supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
                 useSupabase = true;
@@ -215,18 +221,20 @@
                 const userId = email.replace(/[@.]/g, '_');
                 let storedPin = localStorage.getItem(`pin_${userId}`);
                 
-                // Check if user exists (has a PIN stored)
+                // Initialize default PINs for predefined users if they don't exist
                 if (!storedPin) {
-                    // Set default PINs for predefined users if they don't exist
                     if (email === 'demo@frugal.com') {
                         localStorage.setItem(`pin_${userId}`, '123456');
                         storedPin = '123456';
+                        console.log('🔑 Demo PIN initialized: 123456');
                     } else if (email === 'admin@frugal.com') {
                         localStorage.setItem(`pin_${userId}`, '999999');
                         storedPin = '999999';
+                        console.log('👑 Admin PIN initialized: 999999');
                     } else if (['user@example.com', 'test@budget.com'].includes(email)) {
                         localStorage.setItem(`pin_${userId}`, '000000');
                         storedPin = '000000';
+                        console.log('👤 Default PIN initialized: 000000');
                     } else {
                         // User doesn't exist
                         return { success: false, error: 'Email tidak terdaftar. Gunakan: demo@frugal.com, user@example.com, test@budget.com, atau minta admin untuk membuat akun Anda.' };
@@ -235,10 +243,12 @@
                 
                 // Always require PIN for all users
                 if (!pin) {
+                    console.log('🔐 PIN required for user:', email, 'Stored PIN:', storedPin);
                     return { success: false, needPin: true };
                 }
                 
                 // Check if PIN matches
+                console.log('🔍 Checking PIN for', email, '- Input:', pin, 'Stored:', storedPin);
                 if (pin !== storedPin) {
                     return { success: false, error: 'PIN salah' };
                 }
@@ -246,6 +256,7 @@
                 const isAdmin = email === 'admin@frugal.com';
                 appState.user = { email, id: userId, role: isAdmin ? 'admin' : 'user' };
                 localStorage.setItem('frugal_user', JSON.stringify(appState.user));
+                console.log('✅ Login successful for:', email);
                 return { success: true };
             },
             logout: () => {
@@ -499,6 +510,19 @@
                                         <i class="fas fa-user text-white text-sm"></i>
                                     </div>
                                     <span class="font-medium">user@example.com</span>
+                                    <i class="fas fa-arrow-right ml-auto opacity-0 group-hover:opacity-100 transition-opacity duration-300"></i>
+                                </div>
+                            </button>
+                            
+                            <button
+                                onclick="quickLogin('admin@frugal.com')"
+                                class="w-full bg-white/10 hover:bg-white/20 text-white py-3 px-4 rounded-2xl transition-all duration-300 border border-white/20 hover:border-white/40 backdrop-blur-sm group"
+                            >
+                                <div class="flex items-center justify-center">
+                                    <div class="w-8 h-8 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-full flex items-center justify-center mr-3">
+                                        <i class="fas fa-crown text-white text-sm"></i>
+                                    </div>
+                                    <span class="font-medium">admin@frugal.com</span>
                                     <i class="fas fa-arrow-right ml-auto opacity-0 group-hover:opacity-100 transition-opacity duration-300"></i>
                                 </div>
                             </button>
@@ -1814,46 +1838,84 @@
                                         <div>
                                             <p class="font-medium">Buat Tabel Database</p>
                                             <p class="text-blue-600">Jalankan SQL berikut di SQL Editor:</p>
-                                            <div class="bg-gray-800 text-green-400 p-3 rounded-xl font-mono text-xs mt-2 overflow-x-auto">
-                                                <div>-- Tabel Users</div>
-                                                <div>CREATE TABLE users (</div>
+                                                            <div class="bg-gray-800 text-green-400 p-3 rounded-xl font-mono text-xs mt-2 overflow-x-auto">
+                                                <div class="text-yellow-400">-- 🗄️ FRUGAL LIVING DATABASE SETUP</div>
+                                                <div class="text-yellow-400">-- Copy and paste this entire script into Supabase SQL Editor</div>
+                                                <br>
+                                                <div class="text-blue-400">-- 1️⃣ Users Table</div>
+                                                <div>CREATE TABLE IF NOT EXISTS users (</div>
                                                 <div>&nbsp;&nbsp;id TEXT PRIMARY KEY,</div>
                                                 <div>&nbsp;&nbsp;email TEXT UNIQUE NOT NULL,</div>
-                                                <div>&nbsp;&nbsp;created_at TIMESTAMP DEFAULT NOW()</div>
+                                                <div>&nbsp;&nbsp;name TEXT,</div>
+                                                <div>&nbsp;&nbsp;role TEXT DEFAULT 'user',</div>
+                                                <div>&nbsp;&nbsp;created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),</div>
+                                                <div>&nbsp;&nbsp;updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()</div>
                                                 <div>);</div>
                                                 <br>
-                                                <div>-- Tabel Transactions</div>
-                                                <div>CREATE TABLE transactions (</div>
+                                                <div class="text-blue-400">-- 2️⃣ Transactions Table</div>
+                                                <div>CREATE TABLE IF NOT EXISTS transactions (</div>
                                                 <div>&nbsp;&nbsp;id BIGINT PRIMARY KEY,</div>
-                                                <div>&nbsp;&nbsp;user_id TEXT REFERENCES users(id),</div>
-                                                <div>&nbsp;&nbsp;type TEXT NOT NULL,</div>
-                                                <div>&nbsp;&nbsp;amount DECIMAL NOT NULL,</div>
+                                                <div>&nbsp;&nbsp;user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,</div>
+                                                <div>&nbsp;&nbsp;type TEXT NOT NULL CHECK (type IN ('income', 'expense')),</div>
+                                                <div>&nbsp;&nbsp;amount DECIMAL(15,2) NOT NULL CHECK (amount > 0),</div>
                                                 <div>&nbsp;&nbsp;category TEXT NOT NULL,</div>
                                                 <div>&nbsp;&nbsp;description TEXT NOT NULL,</div>
                                                 <div>&nbsp;&nbsp;date DATE NOT NULL,</div>
-                                                <div>&nbsp;&nbsp;created_at TIMESTAMP DEFAULT NOW()</div>
+                                                <div>&nbsp;&nbsp;created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),</div>
+                                                <div>&nbsp;&nbsp;updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()</div>
                                                 <div>);</div>
                                                 <br>
-                                                <div>-- Tabel Budgets</div>
-                                                <div>CREATE TABLE budgets (</div>
+                                                <div class="text-blue-400">-- 3️⃣ Budgets Table</div>
+                                                <div>CREATE TABLE IF NOT EXISTS budgets (</div>
                                                 <div>&nbsp;&nbsp;id BIGINT PRIMARY KEY,</div>
-                                                <div>&nbsp;&nbsp;user_id TEXT REFERENCES users(id),</div>
+                                                <div>&nbsp;&nbsp;user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,</div>
                                                 <div>&nbsp;&nbsp;category TEXT NOT NULL,</div>
-                                                <div>&nbsp;&nbsp;amount DECIMAL NOT NULL,</div>
-                                                <div>&nbsp;&nbsp;period TEXT NOT NULL,</div>
-                                                <div>&nbsp;&nbsp;created_at TIMESTAMP DEFAULT NOW()</div>
+                                                <div>&nbsp;&nbsp;amount DECIMAL(15,2) NOT NULL CHECK (amount > 0),</div>
+                                                <div>&nbsp;&nbsp;period TEXT NOT NULL CHECK (period IN ('weekly', 'monthly', 'yearly')),</div>
+                                                <div>&nbsp;&nbsp;created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),</div>
+                                                <div>&nbsp;&nbsp;updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()</div>
                                                 <div>);</div>
                                                 <br>
-                                                <div>-- Tabel Goals</div>
-                                                <div>CREATE TABLE goals (</div>
+                                                <div class="text-blue-400">-- 4️⃣ Goals Table</div>
+                                                <div>CREATE TABLE IF NOT EXISTS goals (</div>
                                                 <div>&nbsp;&nbsp;id BIGINT PRIMARY KEY,</div>
-                                                <div>&nbsp;&nbsp;user_id TEXT REFERENCES users(id),</div>
+                                                <div>&nbsp;&nbsp;user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,</div>
                                                 <div>&nbsp;&nbsp;title TEXT NOT NULL,</div>
-                                                <div>&nbsp;&nbsp;target_amount DECIMAL NOT NULL,</div>
-                                                <div>&nbsp;&nbsp;current_amount DECIMAL DEFAULT 0,</div>
+                                                <div>&nbsp;&nbsp;target_amount DECIMAL(15,2) NOT NULL CHECK (target_amount > 0),</div>
+                                                <div>&nbsp;&nbsp;current_amount DECIMAL(15,2) DEFAULT 0 CHECK (current_amount >= 0),</div>
                                                 <div>&nbsp;&nbsp;deadline DATE NOT NULL,</div>
-                                                <div>&nbsp;&nbsp;created_at TIMESTAMP DEFAULT NOW()</div>
+                                                <div>&nbsp;&nbsp;created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),</div>
+                                                <div>&nbsp;&nbsp;updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()</div>
                                                 <div>);</div>
+                                                <br>
+                                                <div class="text-purple-400">-- 5️⃣ Create Indexes for Better Performance</div>
+                                                <div>CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON transactions(user_id);</div>
+                                                <div>CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date DESC);</div>
+                                                <div>CREATE INDEX IF NOT EXISTS idx_budgets_user_id ON budgets(user_id);</div>
+                                                <div>CREATE INDEX IF NOT EXISTS idx_goals_user_id ON goals(user_id);</div>
+                                                <br>
+                                                <div class="text-purple-400">-- 6️⃣ Enable Row Level Security (RLS)</div>
+                                                <div>ALTER TABLE users ENABLE ROW LEVEL SECURITY;</div>
+                                                <div>ALTER TABLE transactions ENABLE ROW LEVEL SECURITY;</div>
+                                                <div>ALTER TABLE budgets ENABLE ROW LEVEL SECURITY;</div>
+                                                <div>ALTER TABLE goals ENABLE ROW LEVEL SECURITY;</div>
+                                                <br>
+                                                <div class="text-orange-400">-- 7️⃣ Create RLS Policies (Optional - for enhanced security)</div>
+                                                <div>-- Users can only see their own data</div>
+                                                <div>CREATE POLICY "Users can view own data" ON users FOR ALL USING (true);</div>
+                                                <div>CREATE POLICY "Users can manage own transactions" ON transactions FOR ALL USING (true);</div>
+                                                <div>CREATE POLICY "Users can manage own budgets" ON budgets FOR ALL USING (true);</div>
+                                                <div>CREATE POLICY "Users can manage own goals" ON goals FOR ALL USING (true);</div>
+                                                <br>
+                                                <div class="text-green-400">-- 8️⃣ Insert Sample Users with PINs (Optional)</div>
+                                                <div>INSERT INTO users (id, email, name, pin, role) VALUES</div>
+                                                <div>&nbsp;&nbsp;('demo_frugal_com', 'demo@frugal.com', 'Demo User', '123456', 'user'),</div>
+                                                <div>&nbsp;&nbsp;('admin_frugal_com', 'admin@frugal.com', 'Admin User', '999999', 'admin'),</div>
+                                                <div>&nbsp;&nbsp;('user_example_com', 'user@example.com', 'Example User', '000000', 'user'),</div>
+                                                <div>&nbsp;&nbsp;('test_budget_com', 'test@budget.com', 'Test User', '000000', 'user')</div>
+                                                <div>ON CONFLICT (id) DO NOTHING;</div>
+                                                <br>
+                                                <div class="text-green-400">-- ✅ Setup Complete! Your database is ready for Frugal Living</div>
                                             </div>
                                         </div>
                                     </div>
@@ -1874,6 +1936,62 @@
                                 </div>
                             </div>
                         ` : ''}
+                        
+                        <!-- Quick Setup Guide -->
+                        <div class="mt-6 p-4 bg-gradient-to-r from-indigo-50 to-purple-50 rounded-2xl border border-indigo-200">
+                            <h4 class="font-semibold text-indigo-800 mb-3 flex items-center">
+                                <i class="fas fa-zap mr-2"></i>
+                                Quick Setup Guide (5 Menit)
+                            </h4>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                                <div class="space-y-3">
+                                    <div class="flex items-start space-x-3">
+                                        <div class="w-6 h-6 bg-indigo-500 text-white rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">1</div>
+                                        <div>
+                                            <p class="font-medium text-indigo-800">Buat Akun Supabase</p>
+                                            <p class="text-indigo-600 text-xs">Gratis di <a href="https://supabase.com" target="_blank" class="underline font-medium">supabase.com</a></p>
+                                        </div>
+                                    </div>
+                                    <div class="flex items-start space-x-3">
+                                        <div class="w-6 h-6 bg-indigo-500 text-white rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">2</div>
+                                        <div>
+                                            <p class="font-medium text-indigo-800">Buat Project Baru</p>
+                                            <p class="text-indigo-600 text-xs">Klik "New Project" → Isi nama project</p>
+                                        </div>
+                                    </div>
+                                    <div class="flex items-start space-x-3">
+                                        <div class="w-6 h-6 bg-indigo-500 text-white rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">3</div>
+                                        <div>
+                                            <p class="font-medium text-indigo-800">Jalankan SQL Script</p>
+                                            <p class="text-indigo-600 text-xs">Copy script di atas ke SQL Editor</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="space-y-3">
+                                    <div class="flex items-start space-x-3">
+                                        <div class="w-6 h-6 bg-indigo-500 text-white rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">4</div>
+                                        <div>
+                                            <p class="font-medium text-indigo-800">Ambil Credentials</p>
+                                            <p class="text-indigo-600 text-xs">Settings → API → Copy URL & anon key</p>
+                                        </div>
+                                    </div>
+                                    <div class="flex items-start space-x-3">
+                                        <div class="w-6 h-6 bg-indigo-500 text-white rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">5</div>
+                                        <div>
+                                            <p class="font-medium text-indigo-800">Update Kode</p>
+                                            <p class="text-indigo-600 text-xs">Ganti SUPABASE_URL & SUPABASE_ANON_KEY</p>
+                                        </div>
+                                    </div>
+                                    <div class="flex items-start space-x-3">
+                                        <div class="w-6 h-6 bg-green-500 text-white rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">✓</div>
+                                        <div>
+                                            <p class="font-medium text-green-800">Selesai!</p>
+                                            <p class="text-green-600 text-xs">Data otomatis tersinkronisasi ke cloud</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
                     <!-- Debug & Troubleshooting Panel -->
@@ -2558,12 +2676,18 @@
         }
 
         function quickLogin(email) {
+            console.log('🚀 Quick login attempt for:', email);
             const result = auth.login(email);
+            console.log('📋 Login result:', result);
+            
             if (result.success) {
                 loadUserData();
                 render();
             } else if (result.needPin) {
+                console.log('🔐 Showing PIN modal for:', email);
                 showPinModal(email);
+            } else {
+                console.error('❌ Login failed:', result.error);
             }
         }
 
@@ -3912,7 +4036,30 @@
             }
         };
 
+        // Initialize default PINs on app startup
+        function initializeDefaultPins() {
+            const defaultUsers = [
+                { email: 'demo@frugal.com', pin: '123456' },
+                { email: 'admin@frugal.com', pin: '999999' },
+                { email: 'user@example.com', pin: '000000' },
+                { email: 'test@budget.com', pin: '000000' }
+            ];
+            
+            defaultUsers.forEach(user => {
+                const userId = user.email.replace(/[@.]/g, '_');
+                const existingPin = localStorage.getItem(`pin_${userId}`);
+                
+                if (!existingPin) {
+                    localStorage.setItem(`pin_${userId}`, user.pin);
+                    console.log(`🔑 Initialized PIN for ${user.email}: ${user.pin}`);
+                } else {
+                    console.log(`✅ PIN already exists for ${user.email}: ${existingPin}`);
+                }
+            });
+        }
+
         // Initialize app
+        initializeDefaultPins();
         auth.init();
         render();
         
@@ -3920,6 +4067,15 @@
         console.log('🚀 Frugal Living App Initialized');
         console.log('🔧 Debug tools available: window.debugFrugal');
         console.log('📱 Current user:', appState.user);
+        
+        // Show all stored PINs for debugging
+        console.log('🔐 Stored PINs:');
+        ['demo@frugal.com', 'admin@frugal.com', 'user@example.com', 'test@budget.com'].forEach(email => {
+            const userId = email.replace(/[@.]/g, '_');
+            const pin = localStorage.getItem(`pin_${userId}`);
+            console.log(`  ${email}: ${pin || 'NOT SET'}`);
+        });
+        
         if (appState.user) {
             console.log('📊 Data loaded:', {
                 transactions: appState.transactions.length,
@@ -3928,5 +4084,5 @@
             });
         }
     </script>
-<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'980b021753da89b0',t:'MTc1ODEzNzMyMi4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'980b24538623f93e',t:'MTc1ODEzODcyNS4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>
