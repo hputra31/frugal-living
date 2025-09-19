@@ -4351,8 +4351,8 @@
             
             const goal = {
                 title: document.getElementById('goal-title').value,
-                targetAmount: parseFloat(document.getElementById('goal-target').value) / 1000,
-                currentAmount: parseFloat(document.getElementById('goal-current').value || 0) / 1000,
+                target_amount: parseFloat(document.getElementById('goal-target').value) / 1000,
+                current_amount: parseFloat(document.getElementById('goal-current').value || 0) / 1000,
                 deadline: document.getElementById('goal-deadline').value
             };
             
@@ -4368,7 +4368,7 @@
             const amountToAdd = parseFloat(amountInput.value);
 
             if (isNaN(amountToAdd) || amountToAdd <= 0) {
-                showSyncStatus('error', 'Silakan masukkan jumlah yang valid untuk ditambahkan.');
+                showSyncStatus('error', 'Masukkan jumlah yang valid untuk ditambahkan.');
                 amountInput.focus();
                 return;
             }
@@ -4377,7 +4377,7 @@
             if (goalIndex === -1) return;
 
             const goal = appState.goals[goalIndex];
-            const newCurrentAmount = goal.currentAmount + (amountToAdd / 1000);
+            const newCurrentAmount = goal.current_amount + (amountToAdd / 1000);
 
             // Create a corresponding transaction for this saving action
             const transaction = {
@@ -4461,7 +4461,7 @@
                                     type="number"
                                     step="1000"
                                     id="edit-goal-target"
-                                    value="${goal.targetAmount * 1000}"
+                                    value="${goal.target_amount * 1000}"
                                     class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500"
                                     required
                                 />
@@ -4472,7 +4472,7 @@
                                     type="number"
                                     step="1000"
                                     id="edit-goal-current"
-                                    value="${goal.currentAmount * 1000}"
+                                    value="${goal.current_amount * 1000}"
                                     class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500"
                                 />
                             </div>
@@ -4518,7 +4518,7 @@
             const updates = {
                 title: document.getElementById('edit-goal-title').value,
                 target_amount: parseFloat(document.getElementById('edit-goal-target').value) / 1000,
-                current_amount: parseFloat(document.getElementById('edit-goal-current').value) / 1000,
+                current_amount: parseFloat(document.getElementById('edit-goal-current').value || 0) / 1000,
                 deadline: document.getElementById('edit-goal-deadline').value
             };
 
