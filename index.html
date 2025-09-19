@@ -1433,6 +1433,14 @@
                                     required
                                 />
                             </div>
+                            <div>
+                                <textarea
+                                    id="budget-description"
+                                    placeholder="Deskripsi singkat (opsional)"
+                                    rows="2"
+                                    class="w-full px-4 py-3 border-2 border-gray-200 rounded-2xl focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 font-medium bg-white/80 backdrop-blur-sm transition-all duration-300 text-sm sm:text-base shadow-sm dark:bg-slate-700 dark:border-slate-600 dark:text-white dark:placeholder-gray-400"
+                                ></textarea>
+                            </div>
                             <div class="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2">
                                 <select
                                     id="budget-period"
@@ -1473,10 +1481,13 @@
                             return `
                                 <div class="bg-white/70 dark:bg-slate-800/70 backdrop-blur-sm rounded-3xl p-6 shadow-xl border border-white/20 dark:border-slate-700 flex flex-col">
                                     <div class="flex justify-between items-start mb-3">
-                                        <h3 class="text-lg font-semibold text-gray-800 dark:text-white">${budget.category}</h3>
+                                        <div>
+                                            <h3 class="text-lg font-semibold text-gray-800 dark:text-white">${budget.category}</h3>
+                                            ${budget.description ? `<p class="text-xs text-gray-500 dark:text-gray-400 mt-1">${budget.description}</p>` : ''}
+                                        </div>
                                         <span class="text-xs px-2 py-1 rounded-full font-medium bg-indigo-100 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300 capitalize">${budget.period}</span>
                                     </div>
-                                    <div class="space-y-3 flex-grow">
+                                    <div class="space-y-3 flex-grow mt-2">
                                         <div class="w-full bg-gray-200 dark:bg-slate-700 rounded-full h-3">
                                             <div class="bg-gradient-to-r from-${progressColor}-400 to-${progressColor}-600 h-3 rounded-full" style="width: ${Math.min(progress, 100)}%"></div>
                                         </div>
@@ -2370,6 +2381,7 @@
                                                 <div>&nbsp;&nbsp;user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,</div>
                                                 <div>&nbsp;&nbsp;category TEXT NOT NULL,</div>
                                                 <div>&nbsp;&nbsp;amount DECIMAL(15,2) NOT NULL CHECK (amount > 0),</div>
+                                                <div>&nbsp;&nbsp;description TEXT, -- Deskripsi untuk anggaran</div>
                                                 <div>&nbsp;&nbsp;period TEXT NOT NULL CHECK (period IN ('weekly', 'monthly', 'yearly')),</div>
                                                 <div>&nbsp;&nbsp;created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),</div>
                                                 <div>&nbsp;&nbsp;updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()</div>
@@ -3511,6 +3523,7 @@
             const budget = {
                 category: document.getElementById('budget-category').value.trim(),
                 amount: parseFloat(document.getElementById('budget-amount').value) / 1000,
+                description: document.getElementById('budget-description').value.trim(),
                 period: document.getElementById('budget-period').value
             };
             
@@ -3553,6 +3566,15 @@
                                 required
                             />
                         </div>
+                        <div>
+                            <label class="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Deskripsi</label>
+                            <textarea
+                                id="edit-budget-description"
+                                rows="2"
+                                class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 dark:bg-slate-700 dark:border-slate-600 dark:text-white"
+                                placeholder="Deskripsi singkat (opsional)"
+                            >${budget.description || ''}</textarea>
+                        </div>
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div>
                                 <label class="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Jumlah (Rp)</label>
@@ -3593,6 +3615,7 @@
             const updates = {
                 category: document.getElementById('edit-budget-category').value.trim(),
                 amount: parseFloat(document.getElementById('edit-budget-amount').value) / 1000,
+                description: document.getElementById('edit-budget-description').value.trim(),
                 period: document.getElementById('edit-budget-period').value
             };
             updateBudget(budgetId, updates);
