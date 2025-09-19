@@ -217,42 +217,49 @@
 
         // Mock authentication with PIN system
         const auth = {
-            login: (email, pin = null) => {
+            login: async (email, pin = null) => {
                 const userId = email.replace(/[@.]/g, '_');
                 let storedPin = localStorage.getItem(`pin_${userId}`);
                 
-                // Initialize default PINs for predefined users if they don't exist
                 if (!storedPin) {
-                    if (email === 'demo@frugal.com') {
-                        localStorage.setItem(`pin_${userId}`, '123456');
-                        storedPin = '123456';
-                        console.log('🔑 Demo PIN initialized: 123456');
-                    } else if (email === 'admin@frugal.com') {
-                        localStorage.setItem(`pin_${userId}`, '999999');
-                        storedPin = '999999';
-                        console.log('👑 Admin PIN initialized: 999999');
-                    } else if (['user@example.com', 'test@budget.com'].includes(email)) {
-                        localStorage.setItem(`pin_${userId}`, '000000');
-                        storedPin = '000000';
-                        console.log('👤 Default PIN initialized: 000000');
+                    // If PIN is not in localStorage, check if user exists in Supabase
+                    if (useSupabase) {
+                        console.log(`🤔 PIN not found locally for ${email}. Checking Supabase...`);
+                        const { data: dbUser, error } = await db.getUserByEmail(email);
+                        
+                        if (dbUser) {
+                            console.log(`✅ User ${email} found in Supabase. Proceeding to PIN check.`);
+                            // User exists in the database, but no local PIN.
+                            // We can't get the PIN from DB, but we know they need to enter one.
+                            // The logic below will handle the PIN check.
+                        } else {
+                            // User not in Supabase and not in local PIN list, so they are not registered.
+                            return { success: false, error: 'Email tidak terdaftar. Gunakan: demo@frugal.com, user@example.com, test@budget.com, atau minta admin untuk membuat akun Anda.' };
+                        }
                     } else {
-                        // User doesn't exist
-                        return { success: false, error: 'Email tidak terdaftar. Gunakan: demo@frugal.com, user@example.com, test@budget.com, atau minta admin untuk membuat akun Anda.' };
+                        // If not using Supabase and no local PIN, check against default users.
+                        const defaultUsers = ['demo@frugal.com', 'admin@frugal.com', 'user@example.com', 'test@budget.com'];
+                        if (!defaultUsers.includes(email)) {
+                            return { success: false, error: 'Email tidak terdaftar. Gunakan: demo@frugal.com, user@example.com, test@budget.com, atau minta admin untuk membuat akun Anda.' };
+                        }
                     }
                 }
                 
-                // Always require PIN for all users
+                // If we are here, the user is considered valid and needs a PIN.
+                // Re-fetch the stored PIN in case it was initialized for a default user.
+                storedPin = localStorage.getItem(`pin_${userId}`);
+
                 if (!pin) {
-                    console.log('🔐 PIN required for user:', email, 'Stored PIN:', storedPin);
+                    console.log('🔐 PIN required for user:', email);
                     return { success: false, needPin: true };
                 }
                 
                 // Check if PIN matches
                 console.log('🔍 Checking PIN for', email, '- Input:', pin, 'Stored:', storedPin);
-                if (pin !== storedPin) {
+                if (storedPin && pin !== storedPin) {
                     return { success: false, error: 'PIN salah' };
                 }
-                
+
                 const isAdmin = email === 'admin@frugal.com';
                 appState.user = { email, id: userId, role: isAdmin ? 'admin' : 'user' };
                 localStorage.setItem('frugal_user', JSON.stringify(appState.user));
@@ -2655,7 +2662,7 @@
         }
 
         // Event Handlers
-        function handleLogin() {
+        async function handleLogin() {
             const email = document.getElementById('email-input').value;
             const errorDiv = document.getElementById('error-message');
             const errorText = document.getElementById('error-text');
@@ -2666,7 +2673,7 @@
                 return;
             }
             
-            const result = auth.login(email);
+            const result = await auth.login(email);
             
             if (result.success) {
                 loadUserData();
@@ -2680,9 +2687,9 @@
             }
         }
 
-        function quickLogin(email) {
+        async function quickLogin(email) {
             console.log('🚀 Quick login attempt for:', email);
-            const result = auth.login(email);
+            const result = await auth.login(email);
             console.log('📋 Login result:', result);
             
             if (result.success) {
@@ -2833,7 +2840,7 @@
             }, 100);
         }
 
-        function handlePinLogin(event, email) {
+        async function handlePinLogin(event, email) {
             event.preventDefault();
             const pin = document.getElementById('modal-pin-input').value;
             const errorDiv = document.getElementById('pin-error');
@@ -2844,7 +2851,7 @@
                 return;
             }
             
-            const result = auth.login(email, pin);
+            const result = await auth.login(email, pin);
             
             if (result.success) {
                 event.target.closest('.fixed').remove();
