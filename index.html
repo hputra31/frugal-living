@@ -486,33 +486,33 @@
         }
 
         async function deleteTransaction(id) {
-            if (!appState.user) return;
-            
-            if (confirm('Apakah Anda yakin ingin menghapus transaksi ini?')) {
-                const userId = appState.user.id;
-                const originalTransactions = [...appState.transactions];
-                
-                // Optimistic UI update: remove from state and re-render immediately
-                appState.transactions = appState.transactions.filter(t => t.id !== id);
-                render();
-
-                try {
+            showConfirmModal({
+                title: 'Hapus Transaksi?',
+                message: 'Apakah Anda yakin ingin menghapus transaksi ini? Tindakan ini tidak dapat dibatalkan.',
+                confirmText: 'Ya, Hapus',
+                isDestructive: true,
+                onConfirm: async () => {
+                    if (!appState.user) return;
+                    const userId = appState.user.id;
+                    const originalTransactions = [...appState.transactions];
+                    appState.transactions = appState.transactions.filter(t => t.id !== id);
+                    render(); // Optimistic UI update
                     localStorage.setItem(`transactions_${userId}`, JSON.stringify(appState.transactions));
-                    
                     if (useSupabase) {
                         const { error } = await db.deleteTransaction(id);
-                        if (error) throw error; // If Supabase fails, trigger the catch block
-                        showSyncStatus('success', 'Transaksi dihapus & disinkronisasi.');
+                        if (error) {
+                            console.error('❌ Error deleting transaction:', error);
+                            showSyncStatus('error', 'Gagal menghapus. Data dikembalikan.');
+                            appState.transactions = originalTransactions; // Rollback
+                            render();
+                        } else {
+                            showSyncStatus('success', 'Transaksi dihapus & disinkronisasi.');
+                        }
                     } else {
                         showSyncStatus('success', 'Transaksi berhasil dihapus (lokal).');
                     }
-                } catch (error) {
-                    console.error('❌ Error deleting transaction:', error);
-                    showSyncStatus('error', 'Gagal menghapus. Data dikembalikan.');
-                    appState.transactions = originalTransactions; // Rollback on failure
-                    render(); // Re-render to show the rolled-back data
                 }
-            }
+            });
         }
 
         async function createBudget(budget) {
@@ -574,14 +574,20 @@
         }
 
         async function deleteBudget(budgetId) {
-            if (!appState.user) return;
-            if (!confirm('Apakah Anda yakin ingin menghapus anggaran ini?')) return;
-
-            const userId = appState.user.id;
-            appState.budgets = appState.budgets.filter(b => b.id !== budgetId);
-            localStorage.setItem(`budgets_${userId}`, JSON.stringify(appState.budgets));
-            showSyncStatus('success', 'Anggaran berhasil dihapus.');
-            render();
+            showConfirmModal({
+                title: 'Hapus Anggaran?',
+                message: 'Apakah Anda yakin ingin menghapus anggaran ini?',
+                confirmText: 'Ya, Hapus',
+                isDestructive: true,
+                onConfirm: () => {
+                    if (!appState.user) return;
+                    const userId = appState.user.id;
+                    appState.budgets = appState.budgets.filter(b => b.id !== budgetId);
+                    localStorage.setItem(`budgets_${userId}`, JSON.stringify(appState.budgets));
+                    showSyncStatus('success', 'Anggaran berhasil dihapus.');
+                    render();
+                }
+            });
         }
 
         async function saveReceivable(receivable) {
@@ -652,14 +658,20 @@
         }
 
         async function deleteReceivable(receivableId) {
-            if (!appState.user) return;
-            if (!confirm('Apakah Anda yakin ingin menghapus catatan piutang ini?')) return;
-
-            const userId = appState.user.id;
-            appState.receivables = appState.receivables.filter(r => r.id !== receivableId);
-            localStorage.setItem(`receivables_${userId}`, JSON.stringify(appState.receivables));
-            showSyncStatus('success', 'Piutang berhasil dihapus.');
-            render();
+            showConfirmModal({
+                title: 'Hapus Piutang?',
+                message: 'Apakah Anda yakin ingin menghapus catatan piutang ini?',
+                confirmText: 'Ya, Hapus',
+                isDestructive: true,
+                onConfirm: () => {
+                    if (!appState.user) return;
+                    const userId = appState.user.id;
+                    appState.receivables = appState.receivables.filter(r => r.id !== receivableId);
+                    localStorage.setItem(`receivables_${userId}`, JSON.stringify(appState.receivables));
+                    showSyncStatus('success', 'Piutang berhasil dihapus.');
+                    render();
+                }
+            });
         }
 
         function saveGoal(goal) {
@@ -3357,10 +3369,7 @@
         }
 
         function removeTransaction(id) {
-            if (confirm('Apakah Anda yakin ingin menghapus transaksi ini?')) {
-                deleteTransaction(id);
-                render();
-            }
+            deleteTransaction(id);
         }
 
         function showAddBudgetForm() {
@@ -3369,6 +3378,41 @@
 
         function hideAddBudgetForm() {
             document.getElementById('budget-form').classList.add('hidden');
+        }
+
+        function showConfirmModal({ title, message, confirmText = 'Konfirmasi', cancelText = 'Batal', onConfirm, isDestructive = false }) {
+            const modalId = `confirm-modal-${Date.now()}`;
+            const modal = document.createElement('div');
+            modal.id = modalId;
+            modal.className = 'fixed inset-0 bg-black/60 backdrop-blur-lg flex items-center justify-center p-4 z-50 animate-fadeIn';
+
+            const confirmButtonClass = isDestructive
+                ? 'bg-gradient-to-r from-red-500 to-rose-600 hover:from-red-600 hover:to-rose-700'
+                : 'bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700';
+
+            const iconClass = isDestructive ? 'fa-exclamation-triangle text-red-500 dark:text-red-400' : 'fa-question-circle text-blue-500 dark:text-blue-400';
+            const iconBgClass = isDestructive ? 'bg-red-100 dark:bg-red-500/20' : 'bg-blue-100 dark:bg-blue-500/20';
+
+            modal.innerHTML = `
+                <div class="bg-white/95 dark:bg-slate-800/95 backdrop-blur-3xl rounded-3xl p-8 w-full max-w-md shadow-2xl border border-white/40 dark:border-slate-700 animate-slideUp">
+                    <div class="text-center">
+                        <div class="w-16 h-16 ${iconBgClass} rounded-3xl flex items-center justify-center mx-auto mb-4 shadow-lg">
+                            <i class="fas ${iconClass} text-3xl"></i>
+                        </div>
+                        <h3 class="text-xl font-bold text-gray-800 dark:text-white mb-2">${title}</h3>
+                        <p class="text-gray-600 dark:text-gray-400 text-sm whitespace-pre-line">${message}</p>
+                    </div>
+                    <div class="flex space-x-3 mt-8">
+                        <button id="confirm-btn-${modalId}" class="flex-1 ${confirmButtonClass} text-white py-3 rounded-xl font-semibold shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300">${confirmText}</button>
+                        <button id="cancel-btn-${modalId}" class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-slate-600 dark:hover:bg-slate-500 dark:text-gray-200 py-3 rounded-xl font-semibold transition-all duration-300">${cancelText}</button>
+                    </div>
+                </div>
+            `;
+
+            document.body.appendChild(modal);
+            const closeModal = () => document.getElementById(modalId)?.remove();
+            document.getElementById(`confirm-btn-${modalId}`).onclick = () => { closeModal(); if (onConfirm) onConfirm(); };
+            document.getElementById(`cancel-btn-${modalId}`).onclick = closeModal;
         }
 
         function handleAddBudget(event) {
@@ -3494,9 +3538,14 @@
         }
 
         async function handleMarkAsPaid(receivableId) {
-            if (confirm('Tandai piutang ini sebagai lunas?')) {
-                await updateReceivableStatus(receivableId, 'paid');
-            }
+            showConfirmModal({
+                title: 'Tandai Lunas?',
+                message: 'Apakah Anda yakin ingin menandai piutang ini sebagai lunas?',
+                confirmText: 'Ya, Lunas',
+                onConfirm: async () => {
+                    await updateReceivableStatus(receivableId, 'paid');
+                }
+            });
         }
 
         function handleDeleteReceivable(receivableId) {
@@ -3558,22 +3607,21 @@
         }
 
         function handleDeleteGoal(goalId) {
-            if (confirm('Apakah Anda yakin ingin menghapus target ini? Tindakan ini tidak dapat dibatalkan.')) {
-                if (appState.user) {
-                    const userId = appState.user.id;
-                    // Filter out the goal to be deleted
-                    appState.goals = appState.goals.filter(g => g.id !== goalId);
-                    
-                    // Save the updated goals array to localStorage
-                    localStorage.setItem(`goals_${userId}`, JSON.stringify(appState.goals));
-                    
-                    // Re-render the UI
-                    render();
-                    
-                    // Show a success message
-                    showSyncStatus('success', 'Target berhasil dihapus.');
+            showConfirmModal({
+                title: 'Hapus Target?',
+                message: 'Apakah Anda yakin ingin menghapus target ini? Tindakan ini tidak dapat dibatalkan.',
+                confirmText: 'Ya, Hapus',
+                isDestructive: true,
+                onConfirm: () => {
+                    if (appState.user) {
+                        const userId = appState.user.id;
+                        appState.goals = appState.goals.filter(g => g.id !== goalId);
+                        localStorage.setItem(`goals_${userId}`, JSON.stringify(appState.goals));
+                        render();
+                        showSyncStatus('success', 'Target berhasil dihapus.');
+                    }
                 }
-            }
+            });
         }
 
         function showEditGoalForm(goalId) {
@@ -3695,19 +3743,25 @@
         }
 
         function clearAllData() {
-            if (confirm('Are you sure you want to delete all your data? This action cannot be undone.')) {
-                if (appState.user) {
-                    const userId = appState.user.id;
-                    localStorage.removeItem(`transactions_${userId}`);
-                    localStorage.removeItem(`budgets_${userId}`);
-                    localStorage.removeItem(`goals_${userId}`);
-                    appState.transactions = [];
-                    appState.budgets = [];
-                    appState.goals = [];
-                    render();
-                    showSyncStatus('success', 'Semua data berhasil dihapus.');
+            showConfirmModal({
+                title: 'Hapus Semua Data?',
+                message: 'PERINGATAN! Anda akan menghapus semua data (transaksi, anggaran, target) untuk akun ini.\n\nTindakan ini tidak dapat dibatalkan.',
+                confirmText: 'Ya, Hapus Semua',
+                isDestructive: true,
+                onConfirm: () => {
+                    if (appState.user) {
+                        const userId = appState.user.id;
+                        localStorage.removeItem(`transactions_${userId}`);
+                        localStorage.removeItem(`budgets_${userId}`);
+                        localStorage.removeItem(`goals_${userId}`);
+                        appState.transactions = [];
+                        appState.budgets = [];
+                        appState.goals = [];
+                        render();
+                        showSyncStatus('success', 'Semua data berhasil dihapus.');
+                    }
                 }
-            }
+            });
         }
 
         function setQuickAmount(amount) {
@@ -3921,14 +3975,18 @@
         }
 
         function removePinSecurity() {
-            if (confirm('Apakah Anda yakin ingin menghapus PIN keamanan? Akun Anda akan kurang aman.')) {
-                if (auth.removePin()) {
-                    showSyncStatus('success', 'PIN keamanan berhasil dihapus.');
-                    render();
-                } else {
-                    showSyncStatus('error', 'Gagal menghapus PIN. Silakan coba lagi.');
+            showConfirmModal({
+                title: 'Hapus PIN Keamanan?',
+                message: 'Akun Anda akan menjadi kurang aman dan dapat diakses tanpa PIN. Apakah Anda yakin?',
+                confirmText: 'Ya, Hapus PIN',
+                isDestructive: true,
+                onConfirm: () => {
+                    if (auth.removePin()) {
+                        showSyncStatus('success', 'PIN keamanan berhasil dihapus.');
+                        render();
+                    }
                 }
-            }
+            });
         }
 
         function saveProfileSettings() {
@@ -4167,16 +4225,17 @@
         }
 
         function resetUserPin(email) {
-            if (appState.user?.role !== 'admin') {
-                showSyncStatus('error', 'Akses ditolak. Hanya admin yang dapat reset PIN user.');
-                return;
-            }
-            
-            if (confirm(`Reset PIN untuk user ${email}?\n\nPIN akan direset ke 000000`)) {
-                const userId = email.replace(/[@.]/g, '_');
-                localStorage.setItem(`pin_${userId}`, '000000');
-                showSyncStatus('success', `PIN user ${email} berhasil direset ke 000000`);
-            }
+            showConfirmModal({
+                title: 'Reset PIN Pengguna?',
+                message: `Anda akan mereset PIN untuk pengguna ${email} menjadi "000000".`,
+                confirmText: 'Ya, Reset PIN',
+                onConfirm: () => {
+                    if (appState.user?.role !== 'admin') return;
+                    const userId = email.replace(/[@.]/g, '_');
+                    localStorage.setItem(`pin_${userId}`, '000000');
+                    showSyncStatus('success', `PIN user ${email} berhasil direset ke 000000`);
+                }
+            });
         }
 
         function exportUserData(email) {
@@ -4221,19 +4280,26 @@
                 return;
             }
             
-            if (confirm(`PERINGATAN!\n\nHapus user ${email} dan SEMUA datanya?\n\nTindakan ini tidak dapat dibatalkan!`)) {
-                const userId = email.replace(/[@.]/g, '_');
-                
-                // Remove all user data
-                localStorage.removeItem(`pin_${userId}`);
-                localStorage.removeItem(`transactions_${userId}`);
-                localStorage.removeItem(`budgets_${userId}`);
-                localStorage.removeItem(`goals_${userId}`);
-                localStorage.removeItem(`profile_${userId}`);
-                
-                showSyncStatus('success', `User ${email} dan semua datanya berhasil dihapus!`);
-                render(); // Refresh the page
-            }
+            showConfirmModal({
+                title: 'Hapus Pengguna?',
+                message: `PERINGATAN!\n\nAnda akan menghapus pengguna ${email} dan SEMUA datanya secara permanen.\n\nTindakan ini tidak dapat dibatalkan.`,
+                confirmText: 'Ya, Hapus Pengguna Ini',
+                isDestructive: true,
+                onConfirm: () => {
+                    if (appState.user?.role !== 'admin') return;
+                    const userId = email.replace(/[@.]/g, '_');
+                    
+                    // Remove all user data
+                    localStorage.removeItem(`pin_${userId}`);
+                    localStorage.removeItem(`transactions_${userId}`);
+                    localStorage.removeItem(`budgets_${userId}`);
+                    localStorage.removeItem(`goals_${userId}`);
+                    localStorage.removeItem(`profile_${userId}`);
+                    
+                    showSyncStatus('success', `User ${email} dan semua datanya berhasil dihapus!`);
+                    render(); // Refresh the page
+                }
+            });
         }
 
         function viewUserDetails(email) {
