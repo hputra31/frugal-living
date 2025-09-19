@@ -3574,7 +3574,7 @@
             document.getElementById('new-user-email').focus();
         }
 
-        function handleAddUser(event) {
+        async function handleAddUser(event) {
             event.preventDefault();
             
             const email = document.getElementById('new-user-email').value;
@@ -3601,26 +3601,44 @@
                 return;
             }
             
-            // Create user
-            localStorage.setItem(`pin_${userId}`, pin);
-            
-            // Save user profile if name provided
-            if (name) {
-                localStorage.setItem(`profile_${userId}`, JSON.stringify({
-                    name: name,
-                    currency: 'IDR',
-                    theme: 'light'
-                }));
+            try {
+                // Always save to localStorage for the PIN system to work
+                localStorage.setItem(`pin_${userId}`, pin);
+                if (name) {
+                    localStorage.setItem(`profile_${userId}`, JSON.stringify({ name, currency: 'IDR', theme: 'light' }));
+                }
+                localStorage.setItem(`transactions_${userId}`, '[]');
+                localStorage.setItem(`budgets_${userId}`, '[]');
+                localStorage.setItem(`goals_${userId}`, '[]');
+
+                // If Supabase is used, create the user there as well
+                if (useSupabase) {
+                    console.log('➕ Creating user in Supabase...');
+                    const { data, error } = await db.createUser({
+                        id: userId,
+                        email: email,
+                        name: name || null,
+                        role: 'user'
+                    });
+
+                    if (error) {
+                        console.error('❌ Supabase user creation error:', error);
+                        showSyncStatus('error', 'User dibuat lokal, gagal sync ke cloud.');
+                    } else {
+                        console.log('✅ User created in Supabase:', data);
+                        showSyncStatus('success', `User ${email} berhasil dibuat & disinkronisasi!`);
+                    }
+                } else {
+                    showSyncStatus('success', `User ${email} berhasil dibuat (lokal)!`);
+                }
+
+                // Close modal and re-render
+                event.target.closest('.fixed').remove();
+                render();
+            } catch (error) {
+                console.error('❌ Error creating user:', error);
+                showSyncStatus('error', 'Gagal membuat user.');
             }
-            
-            // Initialize empty data for new user
-            localStorage.setItem(`transactions_${userId}`, '[]');
-            localStorage.setItem(`budgets_${userId}`, '[]');
-            localStorage.setItem(`goals_${userId}`, '[]');
-            
-            alert(`User ${email} berhasil dibuat!\nPIN: ${pin}\n\nUser dapat login dengan email dan PIN tersebut.`);
-            event.target.closest('.fixed').remove();
-            render(); // Refresh the page to show new user
         }
 
         function resetUserPin(email) {
