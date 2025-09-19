@@ -187,6 +187,15 @@
                     .eq('id', transactionId);
                 return { data, error };
             },
+
+            async updateTransaction(transactionId, updates) {
+                const { data, error } = await supabase
+                    .from('transactions')
+                    .update(updates)
+                    .eq('id', transactionId)
+                    .select();
+                return { data, error };
+            },
             
             // Budget functions
             async getBudgets(userId) {
@@ -663,13 +672,27 @@
                 message: 'Apakah Anda yakin ingin menghapus catatan piutang ini?',
                 confirmText: 'Ya, Hapus',
                 isDestructive: true,
-                onConfirm: () => {
+                onConfirm: async () => {
                     if (!appState.user) return;
                     const userId = appState.user.id;
+                    const originalReceivables = [...appState.receivables];
                     appState.receivables = appState.receivables.filter(r => r.id !== receivableId);
+                    render(); // Optimistic UI update
                     localStorage.setItem(`receivables_${userId}`, JSON.stringify(appState.receivables));
-                    showSyncStatus('success', 'Piutang berhasil dihapus.');
-                    render();
+
+                    if (useSupabase) {
+                        const { error } = await db.deleteReceivable(receivableId);
+                        if (error) {
+                            console.error('❌ Error deleting receivable:', error);
+                            showSyncStatus('error', 'Gagal menghapus. Data dikembalikan.');
+                            appState.receivables = originalReceivables; // Rollback
+                            render();
+                        } else {
+                            showSyncStatus('success', 'Piutang dihapus & disinkronisasi.');
+                        }
+                    } else {
+                        showSyncStatus('success', 'Piutang berhasil dihapus (lokal).');
+                    }
                 }
             });
         }
@@ -2537,7 +2560,7 @@
                                             <i class="fas fa-paper-plane text-lg sm:text-xl"></i>
                                         </div>
                                         <div>
-                                            <h3 class="text-xl sm:text-2xl font-bold">✈️ Tambah Transaksi</h3>
+                                            <h3 class="text-xl sm:text-2xl font-bold">Tambah Transaksi</h3>
                                             <p class="text-white/90 text-xs sm:text-sm mt-1">Catat keuangan dengan mudah</p>
                                         </div>
                                     </div>
@@ -2679,7 +2702,7 @@
                                             <div class="w-6 h-6 sm:w-8 sm:h-8 bg-white/20 rounded-full flex items-center justify-center mr-2 sm:mr-3 group-hover:rotate-12 transition-transform duration-300">
                                                 <i class="fas fa-paper-plane text-sm sm:text-lg"></i>
                                             </div>
-                                            <span class="text-base sm:text-xl">✈️ Kirim Transaksi</span>
+                                            <span class="text-base sm:text-xl">Kirim Transaksi</span>
                                         </div>
                                     </button>
                                 </div>
@@ -3535,6 +3558,127 @@
             saveReceivable(receivable);
             hideAddReceivableForm();
             render();
+        }
+
+        function showEditTransactionModal(transactionId) {
+            const transaction = appState.transactions.find(t => t.id === transactionId);
+            if (!transaction) {
+                showSyncStatus('error', 'Transaksi tidak ditemukan.');
+                return;
+            }
+
+            const modal = document.createElement('div');
+            modal.id = 'edit-transaction-modal';
+            modal.className = 'fixed inset-0 bg-black/60 backdrop-blur-lg flex items-center justify-center p-4 z-50 animate-fadeIn';
+            
+            const isExpense = transaction.type === 'expense';
+
+            const expenseCategories = `
+                <option value="Makanan" ${transaction.category === 'Makanan' ? 'selected' : ''}>🍽️ Makanan & Minuman</option>
+                <option value="Transportasi" ${transaction.category === 'Transportasi' ? 'selected' : ''}>🚗 Transportasi</option>
+                <option value="Belanja" ${transaction.category === 'Belanja' ? 'selected' : ''}>🛍️ Belanja</option>
+                <option value="Tagihan" ${transaction.category === 'Tagihan' ? 'selected' : ''}>📄 Tagihan & Utilitas</option>
+                <option value="Hiburan" ${transaction.category === 'Hiburan' ? 'selected' : ''}>🎬 Hiburan</option>
+                <option value="Kesehatan" ${transaction.category === 'Kesehatan' ? 'selected' : ''}>🏥 Kesehatan</option>
+                <option value="Pendidikan" ${transaction.category === 'Pendidikan' ? 'selected' : ''}>📚 Pendidikan</option>
+                <option value="Lainnya" ${transaction.category === 'Lainnya' ? 'selected' : ''}>📦 Lainnya</option>
+            `;
+
+            const incomeCategories = `
+                <option value="Gaji" ${transaction.category === 'Gaji' ? 'selected' : ''}>💰 Gaji & Upah</option>
+                <option value="Freelance" ${transaction.category === 'Freelance' ? 'selected' : ''}>💻 Freelance</option>
+                <option value="Investasi" ${transaction.category === 'Investasi' ? 'selected' : ''}>📈 Investasi & Dividen</option>
+                <option value="Hadiah" ${transaction.category === 'Hadiah' ? 'selected' : ''}>🎁 Hadiah & Bonus</option>
+                <option value="Bisnis" ${transaction.category === 'Bisnis' ? 'selected' : ''}>🏪 Bisnis Sampingan</option>
+                <option value="Lainnya" ${transaction.category === 'Lainnya' ? 'selected' : ''}>📦 Lainnya</option>
+            `;
+
+            modal.innerHTML = `
+                <div class="bg-white/95 dark:bg-slate-800/95 backdrop-blur-3xl rounded-3xl p-8 w-full max-w-lg shadow-2xl border border-white/40 dark:border-slate-700 animate-slideUp max-h-[90vh] overflow-y-auto">
+                    <div class="flex justify-between items-center mb-6">
+                        <h3 class="text-xl font-bold text-gray-800 dark:text-white">Edit Transaksi</h3>
+                        <button onclick="document.getElementById('edit-transaction-modal').remove()" class="text-gray-500 hover:text-gray-700 p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-slate-700 transition-all duration-300">
+                            <i class="fas fa-times text-xl"></i>
+                        </button>
+                    </div>
+                    <form onsubmit="handleUpdateTransaction(event, ${transaction.id})" class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Jenis Transaksi</label>
+                            <select id="edit-transaction-type" class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl dark:bg-slate-700 dark:border-slate-600 dark:text-white" disabled>
+                                <option value="expense" ${isExpense ? 'selected' : ''}>Pengeluaran</option>
+                                <option value="income" ${!isExpense ? 'selected' : ''}>Pemasukan</option>
+                            </select>
+                        </div>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Jumlah (Rp)</label>
+                                <input type="number" step="1000" id="edit-transaction-amount" value="${transaction.amount * 1000}" class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl dark:bg-slate-700 dark:border-slate-600 dark:text-white" required />
+                            </div>
+                            <div>
+                                <label class="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Tanggal</label>
+                                <input type="date" id="edit-transaction-date" value="${transaction.date}" class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl dark:bg-slate-700 dark:border-slate-600 dark:text-white" required />
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Kategori</p>
+                            <select id="edit-transaction-category" class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl dark:bg-slate-700 dark:border-slate-600 dark:text-white" required>
+                                ${isExpense ? expenseCategories : incomeCategories}
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Deskripsi</p>
+                            <input type="text" id="edit-transaction-description" value="${transaction.description}" class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl dark:bg-slate-700 dark:border-slate-600 dark:text-white" required />
+                        </div>
+                        <div class="flex space-x-3 pt-4">
+                            <button type="submit" class="flex-1 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white py-3 rounded-xl font-semibold shadow-lg">
+                                <i class="fas fa-save mr-2"></i>Simpan Perubahan
+                            </button>
+                            <button type="button" onclick="document.getElementById('edit-transaction-modal').remove()" class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700 py-3 rounded-xl font-semibold dark:bg-slate-600 dark:hover:bg-slate-500 dark:text-gray-200">
+                                <i class="fas fa-times mr-2"></i>Batal
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        }
+
+        async function handleUpdateTransaction(event, transactionId) {
+            event.preventDefault();
+
+            const transactionIndex = appState.transactions.findIndex(t => t.id === transactionId);
+            if (transactionIndex === -1) return;
+
+            const originalTransaction = { ...appState.transactions[transactionIndex] };
+            
+            const updates = {
+                amount: parseFloat(document.getElementById('edit-transaction-amount').value) / 1000,
+                date: document.getElementById('edit-transaction-date').value,
+                category: document.getElementById('edit-transaction-category').value,
+                description: document.getElementById('edit-transaction-description').value,
+                updated_at: new Date().toISOString()
+            };
+
+            // Optimistic UI update
+            appState.transactions[transactionIndex] = { ...originalTransaction, ...updates };
+            localStorage.setItem(`transactions_${appState.user.id}`, JSON.stringify(appState.transactions));
+            document.getElementById('edit-transaction-modal').remove();
+            render();
+
+            if (useSupabase) {
+                const { error } = await db.updateTransaction(transactionId, updates);
+                if (error) {
+                    console.error('❌ Error updating transaction:', error);
+                    showSyncStatus('error', 'Gagal update. Data dikembalikan.');
+                    appState.transactions[transactionIndex] = originalTransaction; // Rollback
+                    localStorage.setItem(`transactions_${appState.user.id}`, JSON.stringify(appState.transactions));
+                    render();
+                } else {
+                    showSyncStatus('success', 'Transaksi berhasil diperbarui & disinkronisasi.');
+                }
+            } else {
+                showSyncStatus('success', 'Transaksi berhasil diperbarui (lokal).');
+            }
         }
 
         async function handleMarkAsPaid(receivableId) {
@@ -4485,12 +4629,20 @@
                                             <p class="text-xs text-gray-500">${new Date(transaction.date).toLocaleDateString('id-ID')}</p>
                                         </div>
                                     </div>
-                                    <button
-                                        onclick="deleteTransaction(${transaction.id})"
-                                        class="text-red-500 hover:text-red-700 hover:bg-red-50 p-2 rounded-xl transition-all duration-300"
-                                    >
-                                        <i class="fas fa-trash text-sm"></i>
-                                    </button>
+                                    <div class="flex-shrink-0">
+                                        <button
+                                            onclick="showEditTransactionModal(${transaction.id})"
+                                            class="text-blue-500 hover:text-blue-700 hover:bg-blue-50 p-2 rounded-xl transition-all duration-300"
+                                        >
+                                            <i class="fas fa-edit text-sm"></i>
+                                        </button>
+                                        <button
+                                            onclick="deleteTransaction(${transaction.id})"
+                                            class="text-red-500 hover:text-red-700 hover:bg-red-50 p-2 rounded-xl transition-all duration-300"
+                                        >
+                                            <i class="fas fa-trash text-sm"></i>
+                                        </button>
+                                    </div>
                                 </div>
                                 <div class="flex items-center justify-between">
                                     <span class="inline-flex px-3 py-1 text-xs font-semibold rounded-full bg-${transaction.type === 'income' ? 'green' : 'red'}-100 text-${transaction.type === 'income' ? 'green' : 'red'}-800">
@@ -4542,12 +4694,20 @@
                                         </span>
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm">
-                                        <button
-                                            onclick="deleteTransaction(${transaction.id})"
-                                            class="text-red-500 hover:text-red-700 hover:bg-red-50 p-2 rounded-xl transition-all duration-300 opacity-0 group-hover:opacity-100"
-                                        >
-                                            <i class="fas fa-trash"></i>
-                                        </button>
+                                        <div class="flex items-center space-x-1 opacity-0 group-hover:opacity-100">
+                                            <button
+                                                onclick="showEditTransactionModal(${transaction.id})"
+                                                class="text-blue-500 hover:text-blue-700 hover:bg-blue-50 p-2 rounded-xl transition-all duration-300"
+                                            >
+                                                <i class="fas fa-edit"></i>
+                                            </button>
+                                            <button
+                                                onclick="deleteTransaction(${transaction.id})"
+                                                class="text-red-500 hover:text-red-700 hover:bg-red-50 p-2 rounded-xl transition-all duration-300"
+                                            >
+                                                <i class="fas fa-trash"></i>
+                                            </button>
+                                        </div>
                                     </td>
                                 </tr>
                             `).join('')}
