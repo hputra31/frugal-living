@@ -2022,7 +2022,7 @@
 
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                         ${appState.goals.map(goal => {
-                            const progress = (goal.currentAmount / goal.targetAmount) * 100;
+                            const progress = (goal.current_amount / goal.target_amount) * 100;
                             const daysLeft = Math.ceil((new Date(goal.deadline) - new Date()) / (1000 * 60 * 60 * 24));
                             
                             return `
@@ -2039,8 +2039,8 @@
                                     </div>
                                     <div class="space-y-3 flex-grow">
                                         <div class="flex justify-between text-sm">
-                                            <span>Terkumpul: Rp ${(goal.currentAmount * 1000).toLocaleString('id-ID')}</span>
-                                            <span>Target: Rp ${(goal.targetAmount * 1000).toLocaleString('id-ID')}</span>
+                                            <span>Terkumpul: Rp ${(goal.current_amount * 1000).toLocaleString('id-ID')}</span>
+                                            <span>Target: Rp ${(goal.target_amount * 1000).toLocaleString('id-ID')}</span>
                                         </div>
                                         <div class="w-full bg-gray-200 rounded-full h-3">
                                             <div 
