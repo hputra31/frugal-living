@@ -6,6 +6,12 @@
     <title>Frugal Living - Smart Budgeting</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script>
+        // Enable dark mode in Tailwind CSS
+        tailwind.config = {
+            darkMode: 'class',
+        }
+    </script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800;900&display=swap');
@@ -117,6 +123,7 @@
         // Simple state management
         let appState = {
             user: null,
+            profile: { name: 'Pengguna Frugal', currency: 'IDR', theme: 'light' },
             currentPage: 'overview',
             sidebarOpen: false,
             showQuickAdd: false,
@@ -277,6 +284,7 @@
                 const stored = localStorage.getItem('frugal_user');
                 if (stored) {
                     appState.user = JSON.parse(stored);
+                    loadProfileSettings(appState.user.id);
                     loadUserData();
                 }
             },
@@ -301,6 +309,23 @@
                 return false;
             }
         };
+
+        // Theme Management
+        function applyTheme(theme) {
+            if (theme === 'dark' || (theme === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+                document.documentElement.classList.add('dark');
+            } else {
+                document.documentElement.classList.remove('dark');
+            }
+        }
+
+        function loadProfileSettings(userId) {
+            const profileData = JSON.parse(localStorage.getItem(`profile_${userId}`) || '{}');
+            appState.profile.name = profileData.name || 'Pengguna Frugal';
+            appState.profile.currency = profileData.currency || 'IDR';
+            appState.profile.theme = profileData.theme || 'light';
+            applyTheme(appState.profile.theme);
+        }
 
         // Data management
         async function loadUserData() {
@@ -431,7 +456,7 @@
         // Login Page
         function renderLoginPage() {
             return `
-                <div class="min-h-screen bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-800 flex items-center justify-center p-4 relative overflow-hidden">
+                <div class="min-h-screen bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-800 flex items-center justify-center p-4 relative overflow-hidden dark:from-slate-900 dark:via-black dark:to-slate-800">
                     <!-- Animated Background Elements -->
                     <div class="absolute inset-0 overflow-hidden">
                         <div class="absolute -top-40 -right-40 w-80 h-80 bg-gradient-to-br from-blue-400 to-purple-500 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-pulse"></div>
@@ -544,10 +569,10 @@
         // Dashboard Layout
         function renderDashboard() {
             return `
-                <div class="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
+                <div class="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 dark:from-slate-900 dark:via-slate-800 dark:to-gray-900">
                     <!-- Modern Navbar -->
-                    <nav class="bg-white/80 backdrop-blur-xl shadow-lg border-b border-white/20 fixed w-full top-0 z-40">
-                        <div class="px-4 sm:px-6 lg:px-8">
+                    <nav class="bg-white/80 backdrop-blur-xl shadow-lg border-b border-white/20 fixed w-full top-0 z-40 dark:bg-slate-800/80 dark:border-slate-700/50">
+                        <div class="px-4 sm:px-6 lg:px-8 ">
                             <div class="flex justify-between items-center h-18">
                                 <div class="flex items-center">
                                     <button
@@ -561,8 +586,8 @@
                                             <i class="fas fa-piggy-bank text-white text-lg"></i>
                                         </div>
                                         <div>
-                                            <h1 class="text-lg sm:text-xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">Frugal Living</h1>
-                                            <p class="text-xs sm:text-xs text-gray-500 -mt-1 hidden sm:block">Kelola Keuangan Pintar</p>
+                                            <h1 class="text-lg sm:text-xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent dark:from-indigo-400 dark:to-purple-400">Frugal Living</h1>
+                                            <p class="text-xs sm:text-xs text-gray-500 -mt-1 hidden sm:block dark:text-gray-400">Kelola Keuangan Pintar</p>
                                         </div>
                                     </div>
                                 </div>
@@ -580,11 +605,11 @@
                                             <span class="text-xs sm:text-sm"><span class="hidden xs:inline">Tambah</span><span class="xs:hidden">Quick Add</span></span>
                                         </div>
                                     </button>
-                                    <div class="flex items-center space-x-3 bg-white/60 backdrop-blur-sm px-4 py-2 rounded-2xl border border-white/40">
+                                    <div class="flex items-center space-x-3 bg-white/60 backdrop-blur-sm px-4 py-2 rounded-2xl border border-white/40 dark:bg-slate-700/50 dark:border-slate-600">
                                         <div class="w-8 h-8 bg-gradient-to-br from-blue-400 to-indigo-500 rounded-full flex items-center justify-center">
                                             <i class="fas fa-user text-white text-sm"></i>
                                         </div>
-                                        <span class="text-sm font-medium text-gray-700">${appState.user.email}</span>
+                                        <span class="text-sm font-medium text-gray-700 dark:text-gray-200">${appState.user.email}</span>
                                     </div>
                                 </div>
                             </div>
@@ -594,7 +619,7 @@
                     <!-- Modern Sidebar -->
                     <div id="sidebar" class="fixed inset-y-0 left-0 z-30 w-72 bg-white/90 backdrop-blur-xl shadow-2xl transform ${
                         appState.sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-                    } lg:translate-x-0 transition-transform duration-300 ease-in-out border-r border-white/20">
+                    } lg:translate-x-0 transition-transform duration-300 ease-in-out border-r border-white/20 dark:bg-slate-800/90 dark:border-slate-700">
                         <div class="flex flex-col h-full pt-20">
                             <!-- User Profile Section -->
                             <div class="px-6 py-4 border-b border-gray-100">
@@ -603,8 +628,8 @@
                                         <i class="fas fa-user text-white text-lg"></i>
                                     </div>
                                     <div>
-                                        <p class="font-semibold text-gray-800">Selamat Datang!</p>
-                                        <p class="text-sm text-gray-500 truncate">${appState.user.email}</p>
+                                        <p class="font-semibold text-gray-800 dark:text-gray-100">Selamat Datang!</p>
+                                        <p class="text-sm text-gray-500 truncate dark:text-gray-400">${appState.user.email}</p>
                                     </div>
                                 </div>
                             </div>
@@ -616,7 +641,7 @@
                             <div class="p-4 border-t border-gray-100">
                                 <button
                                     onclick="handleLogout()"
-                                    class="w-full flex items-center px-4 py-3 text-left rounded-2xl font-semibold text-red-600 hover:bg-red-50 hover:text-red-700 transition-all duration-300 group"
+                                    class="w-full flex items-center px-4 py-3 text-left rounded-2xl font-semibold text-red-600 hover:bg-red-50 hover:text-red-700 transition-all duration-300 group dark:text-red-400 dark:hover:bg-red-500/10 dark:hover:text-red-300"
                                 >
                                     <i class="fas fa-sign-out-alt mr-3 w-5 group-hover:scale-110 transition-transform"></i>
                                     Keluar
@@ -635,9 +660,9 @@
                     </div>
 
                     <!-- Modern Footer -->
-                    <footer class="lg:ml-72 bg-white/60 backdrop-blur-sm border-t border-white/20 py-6 px-4 sm:px-6 lg:px-8">
+                    <footer class="lg:ml-72 bg-white/60 backdrop-blur-sm border-t border-white/20 py-6 px-4 sm:px-6 lg:px-8 dark:bg-slate-800/60 dark:border-slate-700">
                         <div class="text-center">
-                            <p class="text-sm text-gray-600">
+                            <p class="text-sm text-gray-600 dark:text-gray-400">
                                 Dibuat dengan ❤️ oleh <span class="font-semibold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">HPUTRAX</span>
                             </p>
                         </div>
@@ -683,7 +708,7 @@
                     class="w-full flex items-center px-4 py-3 text-left rounded-2xl font-semibold transition-all duration-300 group ${
                         appState.currentPage === item.id
                             ? 'bg-gradient-to-r from-indigo-500 to-purple-600 text-white shadow-lg'
-                            : 'text-gray-600 hover:bg-indigo-50 hover:text-indigo-700'
+                            : 'text-gray-600 hover:bg-indigo-50 hover:text-indigo-700 dark:text-gray-300 dark:hover:bg-slate-700 dark:hover:text-white'
                     }"
                 >
                     <i class="${item.icon} mr-3 w-5 group-hover:scale-110 transition-transform"></i>
@@ -726,18 +751,18 @@
                 <div class="space-y-8 fade-in">
                     <div class="flex items-center justify-between">
                         <div>
-                            <h1 class="text-3xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">Ringkasan Keuangan</h1>
-                            <p class="text-gray-600 mt-2">Pantau kondisi keuangan Anda secara real-time</p>
+                            <h1 class="text-3xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent dark:from-indigo-400 dark:to-purple-400">Ringkasan Keuangan</h1>
+                            <p class="text-gray-600 mt-2 dark:text-gray-400">Pantau kondisi keuangan Anda secara real-time</p>
                         </div>
                         <div class="text-right">
-                            <p class="text-sm text-gray-500">Terakhir diperbarui</p>
-                            <p class="text-sm font-medium text-gray-700">${new Date().toLocaleDateString('id-ID')}</p>
+                            <p class="text-sm text-gray-500 dark:text-gray-400">Terakhir diperbarui</p>
+                            <p class="text-sm font-medium text-gray-700 dark:text-gray-300">${new Date().toLocaleDateString('id-ID')}</p>
                         </div>
                     </div>
                     
                     <!-- Modern Summary Cards -->
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        <div class="bg-white/70 backdrop-blur-sm rounded-3xl p-8 shadow-xl border border-white/20 hover:shadow-2xl transition-all duration-300 group">
+                        <div class="bg-white/70 backdrop-blur-sm rounded-3xl p-8 shadow-xl border border-white/20 hover:shadow-2xl transition-all duration-300 group dark:bg-slate-800/70 dark:border-slate-700 dark:hover:shadow-indigo-500/10">
                             <div class="flex items-center justify-between">
                                 <div>
                                     <p class="text-sm font-medium text-gray-600 mb-2">Total Pemasukan</p>
@@ -750,7 +775,7 @@
                             </div>
                         </div>
                         
-                        <div class="bg-white/70 backdrop-blur-sm rounded-3xl p-8 shadow-xl border border-white/20 hover:shadow-2xl transition-all duration-300 group">
+                        <div class="bg-white/70 backdrop-blur-sm rounded-3xl p-8 shadow-xl border border-white/20 hover:shadow-2xl transition-all duration-300 group dark:bg-slate-800/70 dark:border-slate-700 dark:hover:shadow-rose-500/10">
                             <div class="flex items-center justify-between">
                                 <div>
                                     <p class="text-sm font-medium text-gray-600 mb-2">Total Pengeluaran</p>
@@ -763,7 +788,7 @@
                             </div>
                         </div>
                         
-                        <div class="bg-white/70 backdrop-blur-sm rounded-3xl p-8 shadow-xl border border-white/20 hover:shadow-2xl transition-all duration-300 group">
+                        <div class="bg-white/70 backdrop-blur-sm rounded-3xl p-8 shadow-xl border border-white/20 hover:shadow-2xl transition-all duration-300 group dark:bg-slate-800/70 dark:border-slate-700 dark:hover:shadow-blue-500/10">
                             <div class="flex items-center justify-between">
                                 <div>
                                     <p class="text-sm font-medium text-gray-600 mb-2">Saldo Bersih</p>
@@ -784,15 +809,15 @@
                     <!-- Interactive Charts Section -->
                     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 sm:gap-8">
                         <!-- Monthly Trend Chart -->
-                        <div class="bg-white/70 backdrop-blur-sm rounded-3xl p-6 sm:p-8 shadow-xl border border-white/20">
+                        <div class="bg-white/70 backdrop-blur-sm rounded-3xl p-6 sm:p-8 shadow-xl border border-white/20 dark:bg-slate-800/70 dark:border-slate-700">
                             <div class="flex items-center justify-between mb-6">
-                                <h3 class="text-lg sm:text-xl font-bold text-gray-800 flex items-center">
+                                <h3 class="text-lg sm:text-xl font-bold text-gray-800 flex items-center dark:text-white">
                                     <div class="w-8 h-8 bg-gradient-to-br from-blue-400 to-indigo-500 rounded-2xl flex items-center justify-center mr-3 shadow-lg">
                                         <i class="fas fa-chart-line text-white text-sm"></i>
                                     </div>
                                     Tren Keuangan
                                 </h3>
-                                <select class="text-sm bg-white/80 border border-gray-200 rounded-xl px-3 py-2 focus:ring-2 focus:ring-blue-500">
+                                <select class="text-sm bg-white/80 border border-gray-200 rounded-xl px-3 py-2 focus:ring-2 focus:ring-blue-500 dark:bg-slate-700 dark:border-slate-600 dark:text-white">
                                     <option>6 Bulan Terakhir</option>
                                     <option>12 Bulan Terakhir</option>
                                     <option>Tahun Ini</option>
@@ -800,11 +825,11 @@
                             </div>
                             
                             ${appState.transactions.length === 0 ? `
-                                <div class="text-center py-8 sm:py-12">
+                                <div class="text-center py-8 sm:py-12 dark:text-gray-400">
                                     <div class="w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-br from-indigo-100 to-purple-100 rounded-3xl flex items-center justify-center mx-auto mb-4 sm:mb-6">
                                         <i class="fas fa-chart-line text-2xl sm:text-3xl text-indigo-400"></i>
                                     </div>
-                                    <h4 class="text-base sm:text-lg font-semibold text-gray-700 mb-2">Belum Ada Data</h4>
+                                    <h4 class="text-base sm:text-lg font-semibold text-gray-700 mb-2 dark:text-gray-200">Belum Ada Data</h4>
                                     <p class="text-gray-500 text-sm sm:text-base mb-4 sm:mb-6">Tambahkan transaksi untuk melihat tren keuangan</p>
                                     <button onclick="showQuickAddModal()" class="bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white px-4 sm:px-6 py-2 sm:py-3 rounded-2xl font-semibold shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300 text-sm sm:text-base">
                                         <i class="fas fa-plus mr-2"></i>Tambah Transaksi
@@ -813,7 +838,7 @@
                             ` : `
                                 <!-- Simple Chart Visualization -->
                                 <div class="space-y-4">
-                                    <div class="flex items-center justify-between text-sm text-gray-600">
+                                    <div class="flex items-center justify-between text-sm text-gray-600 dark:text-gray-400">
                                         <span>Jan</span>
                                         <span>Feb</span>
                                         <span>Mar</span>
@@ -821,7 +846,7 @@
                                         <span>Mei</span>
                                         <span>Jun</span>
                                     </div>
-                                    <div class="relative h-32 sm:h-40 bg-gradient-to-t from-blue-50 to-transparent rounded-2xl p-4 flex items-end justify-between">
+                                    <div class="relative h-32 sm:h-40 bg-gradient-to-t from-blue-50 to-transparent rounded-2xl p-4 flex items-end justify-between dark:from-blue-900/50">
                                         <div class="w-8 bg-gradient-to-t from-blue-500 to-blue-400 rounded-t-lg shadow-lg" style="height: 60%"></div>
                                         <div class="w-8 bg-gradient-to-t from-green-500 to-green-400 rounded-t-lg shadow-lg" style="height: 80%"></div>
                                         <div class="w-8 bg-gradient-to-t from-purple-500 to-purple-400 rounded-t-lg shadow-lg" style="height: 45%"></div>
@@ -832,11 +857,11 @@
                                     <div class="flex items-center justify-center space-x-6 text-xs sm:text-sm">
                                         <div class="flex items-center">
                                             <div class="w-3 h-3 bg-gradient-to-r from-green-400 to-green-500 rounded-full mr-2"></div>
-                                            <span class="text-gray-600">Pemasukan</span>
+                                            <span class="text-gray-600 dark:text-gray-300">Pemasukan</span>
                                         </div>
                                         <div class="flex items-center">
                                             <div class="w-3 h-3 bg-gradient-to-r from-red-400 to-red-500 rounded-full mr-2"></div>
-                                            <span class="text-gray-600">Pengeluaran</span>
+                                            <span class="text-gray-600 dark:text-gray-300">Pengeluaran</span>
                                         </div>
                                     </div>
                                 </div>
@@ -844,9 +869,9 @@
                         </div>
 
                         <!-- Category Pie Chart -->
-                        <div class="bg-white/70 backdrop-blur-sm rounded-3xl p-6 sm:p-8 shadow-xl border border-white/20">
+                        <div class="bg-white/70 backdrop-blur-sm rounded-3xl p-6 sm:p-8 shadow-xl border border-white/20 dark:bg-slate-800/70 dark:border-slate-700">
                             <div class="flex items-center justify-between mb-6">
-                                <h3 class="text-lg sm:text-xl font-bold text-gray-800 flex items-center">
+                                <h3 class="text-lg sm:text-xl font-bold text-gray-800 flex items-center dark:text-white">
                                     <div class="w-8 h-8 bg-gradient-to-br from-purple-400 to-pink-500 rounded-2xl flex items-center justify-center mr-3 shadow-lg">
                                         <i class="fas fa-chart-pie text-white text-sm"></i>
                                     </div>
@@ -864,11 +889,11 @@
                                 
                                 if (topCategories.length === 0) {
                                     return `
-                                        <div class="text-center py-8 sm:py-12">
+                                        <div class="text-center py-8 sm:py-12 dark:text-gray-400">
                                             <div class="w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-br from-purple-100 to-pink-100 rounded-3xl flex items-center justify-center mx-auto mb-4 sm:mb-6">
                                                 <i class="fas fa-chart-pie text-2xl sm:text-3xl text-purple-400"></i>
                                             </div>
-                                            <h4 class="text-base sm:text-lg font-semibold text-gray-700 mb-2">Belum Ada Pengeluaran</h4>
+                                            <h4 class="text-base sm:text-lg font-semibold text-gray-700 mb-2 dark:text-gray-200">Belum Ada Pengeluaran</h4>
                                             <p class="text-gray-500 text-sm sm:text-base">Catat pengeluaran untuk melihat breakdown kategori</p>
                                         </div>
                                     `;
@@ -880,10 +905,10 @@
                                     <div class="flex flex-col lg:flex-row items-center space-y-6 lg:space-y-0 lg:space-x-8">
                                         <!-- Simple Donut Chart -->
                                         <div class="relative w-32 h-32 mx-auto">
-                                            <div class="w-full h-full rounded-full bg-gradient-to-r from-blue-400 to-purple-500 flex items-center justify-center shadow-lg">
-                                                <div class="w-16 h-16 bg-white rounded-full flex items-center justify-center">
+                                            <div class="w-full h-full rounded-full bg-gradient-to-r from-blue-400 to-purple-500 flex items-center justify-center shadow-lg dark:from-blue-600 dark:to-purple-700">
+                                                <div class="w-16 h-16 bg-white dark:bg-slate-800 rounded-full flex items-center justify-center">
                                                     <div class="text-center">
-                                                        <div class="text-lg font-bold text-gray-800">${topCategories.length}</div>
+                                                        <div class="text-lg font-bold text-gray-800 dark:text-white">${topCategories.length}</div>
                                                         <div class="text-xs text-gray-500">Kategori</div>
                                                     </div>
                                                 </div>
@@ -897,16 +922,16 @@
                                                 const color = colors[index % colors.length];
                                                 
                                                 return `
-                                                    <div class="flex items-center justify-between p-3 bg-white/50 rounded-2xl border border-white/30 hover:bg-white/70 transition-all duration-300 group">
+                                                    <div class="flex items-center justify-between p-3 bg-white/50 rounded-2xl border border-white/30 hover:bg-white/70 transition-all duration-300 group dark:bg-slate-700/50 dark:border-slate-600 dark:hover:bg-slate-700">
                                                         <div class="flex items-center space-x-3">
                                                             <div class="w-4 h-4 bg-gradient-to-r from-${color}-400 to-${color}-500 rounded-full shadow-sm"></div>
                                                             <div>
-                                                                <p class="font-semibold text-gray-800 text-sm">${category}</p>
-                                                                <p class="text-xs text-gray-500">${percentage.toFixed(1)}% dari total</p>
+                                                                <p class="font-semibold text-gray-800 text-sm dark:text-gray-200">${category}</p>
+                                                                <p class="text-xs text-gray-500 dark:text-gray-400">${percentage.toFixed(1)}% dari total</p>
                                                             </div>
                                                         </div>
                                                         <div class="text-right">
-                                                            <p class="font-bold text-gray-800 text-sm">Rp ${(amount * 1000).toLocaleString('id-ID')}</p>
+                                                            <p class="font-bold text-gray-800 text-sm dark:text-gray-100">Rp ${(amount * 1000).toLocaleString('id-ID')}</p>
                                                         </div>
                                                     </div>
                                                 `;
@@ -919,19 +944,19 @@
                     </div>
 
                     <!-- Recent Transactions -->
-                    <div class="bg-white/70 backdrop-blur-sm rounded-3xl p-8 shadow-xl border border-white/20">
+                    <div class="bg-white/70 backdrop-blur-sm rounded-3xl p-8 shadow-xl border border-white/20 dark:bg-slate-800/70 dark:border-slate-700">
                         <div class="flex items-center justify-between mb-6">
-                            <h3 class="text-xl font-bold text-gray-800">Transaksi Terbaru</h3>
-                            <button onclick="navigateTo('transactions')" class="text-indigo-600 hover:text-indigo-700 font-medium text-sm">
+                            <h3 class="text-xl font-bold text-gray-800 dark:text-white">Transaksi Terbaru</h3>
+                            <button onclick="navigateTo('transactions')" class="text-indigo-600 hover:text-indigo-700 font-medium text-sm dark:text-indigo-400 dark:hover:text-indigo-300">
                                 Lihat Semua →
                             </button>
                         </div>
                         ${appState.transactions.length === 0 ? `
-                            <div class="text-center py-12">
+                            <div class="text-center py-12 dark:text-gray-400">
                                 <div class="w-20 h-20 bg-gradient-to-br from-indigo-100 to-purple-100 rounded-3xl flex items-center justify-center mx-auto mb-6">
                                     <i class="fas fa-receipt text-3xl text-indigo-400"></i>
                                 </div>
-                                <h4 class="text-lg font-semibold text-gray-700 mb-2">Belum Ada Transaksi</h4>
+                                <h4 class="text-lg font-semibold text-gray-700 mb-2 dark:text-gray-200">Belum Ada Transaksi</h4>
                                 <p class="text-gray-500 mb-6">Mulai catat transaksi pertama Anda untuk melihat ringkasan keuangan</p>
                                 <button onclick="showQuickAddModal()" class="bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white px-8 py-3 rounded-2xl font-semibold shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300">
                                     <i class="fas fa-plus mr-2"></i>Tambah Transaksi Pertama
@@ -940,18 +965,18 @@
                         ` : `
                             <div class="space-y-4">
                                 ${appState.transactions.slice(-5).reverse().map(t => `
-                                    <div class="flex items-center justify-between p-4 bg-white/50 rounded-2xl border border-white/30 hover:bg-white/70 transition-all duration-300">
+                                    <div class="flex items-center justify-between p-4 bg-white/50 rounded-2xl border border-white/30 hover:bg-white/70 transition-all duration-300 dark:bg-slate-700/50 dark:border-slate-600 dark:hover:bg-slate-700">
                                         <div class="flex items-center space-x-4">
                                             <div class="w-12 h-12 bg-gradient-to-br from-${t.type === 'income' ? 'green' : 'red'}-400 to-${t.type === 'income' ? 'emerald' : 'rose'}-500 rounded-2xl flex items-center justify-center shadow-lg">
                                                 <i class="fas fa-${t.type === 'income' ? 'arrow-up' : 'arrow-down'} text-white"></i>
                                             </div>
                                             <div>
-                                                <p class="font-semibold text-gray-800">${t.description}</p>
-                                                <p class="text-sm text-gray-500">${t.category} • ${new Date(t.date).toLocaleDateString('id-ID')}</p>
+                                                <p class="font-semibold text-gray-800 dark:text-gray-100">${t.description}</p>
+                                                <p class="text-sm text-gray-500 dark:text-gray-400">${t.category} • ${new Date(t.date).toLocaleDateString('id-ID')}</p>
                                             </div>
                                         </div>
                                         <div class="text-right">
-                                            <span class="text-lg font-bold text-${t.type === 'income' ? 'green' : 'red'}-600">
+                                            <span class="text-lg font-bold text-${t.type === 'income' ? 'green' : 'red'}-600 dark:text-${t.type === 'income' ? 'green' : 'red'}-400">
                                                 ${t.type === 'income' ? '+' : '-'}Rp ${(t.amount * 1000).toLocaleString('id-ID')}
                                             </span>
                                         </div>
@@ -969,8 +994,8 @@
                 <div class="space-y-6 fade-in">
                     <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
                         <div>
-                            <h1 class="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">Transaksi</h1>
-                            <p class="text-gray-600 text-sm sm:text-base mt-1">Kelola semua transaksi keuangan Anda</p>
+                            <h1 class="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent dark:from-indigo-400 dark:to-purple-400">Transaksi</h1>
+                            <p class="text-gray-600 text-sm sm:text-base mt-1 dark:text-gray-400">Kelola semua transaksi keuangan Anda</p>
                         </div>
                         <button onclick="showQuickAddModal()" class="w-full sm:w-auto bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white px-4 sm:px-6 py-3 sm:py-2 rounded-2xl font-semibold shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300 flex items-center justify-center">
                             <i class="fas fa-paper-plane mr-2"></i>
@@ -979,7 +1004,7 @@
                     </div>
 
                     <!-- Search and Filter Section -->
-                    <div class="bg-white/70 backdrop-blur-sm rounded-3xl p-4 sm:p-6 shadow-xl border border-white/20">
+                    <div class="bg-white/70 backdrop-blur-sm rounded-3xl p-4 sm:p-6 shadow-xl border border-white/20 dark:bg-slate-800/70 dark:border-slate-700">
                         <div class="flex flex-col lg:flex-row gap-4">
                             <!-- Search Input -->
                             <div class="flex-1 relative">
@@ -990,7 +1015,7 @@
                                     type="text"
                                     id="transaction-search"
                                     placeholder="Cari transaksi berdasarkan deskripsi, kategori, atau jumlah..."
-                                    class="w-full pl-12 pr-4 py-3 border-2 border-gray-200 rounded-2xl focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 font-medium bg-white/80 backdrop-blur-sm transition-all duration-300 text-sm sm:text-base shadow-sm"
+                                    class="w-full pl-12 pr-4 py-3 border-2 border-gray-200 rounded-2xl focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 font-medium bg-white/80 backdrop-blur-sm transition-all duration-300 text-sm sm:text-base shadow-sm dark:bg-slate-700 dark:border-slate-600 dark:text-white dark:placeholder-gray-400"
                                     oninput="filterTransactions()"
                                 />
                             </div>
@@ -1007,20 +1032,20 @@
                                 <button
                                     id="filter-income"
                                     onclick="setTransactionFilter('income')"
-                                    class="px-4 py-2 rounded-xl font-semibold text-sm transition-all duration-300 bg-gray-200 text-gray-700 hover:bg-green-100 hover:text-green-700"
+                                    class="px-4 py-2 rounded-xl font-semibold text-sm transition-all duration-300 bg-gray-200 text-gray-700 hover:bg-green-100 hover:text-green-700 dark:bg-slate-700 dark:text-gray-300 dark:hover:bg-green-500/20 dark:hover:text-green-300"
                                 >
                                     <i class="fas fa-arrow-up mr-1"></i>Pemasukan
                                 </button>
                                 <button
                                     id="filter-expense"
                                     onclick="setTransactionFilter('expense')"
-                                    class="px-4 py-2 rounded-xl font-semibold text-sm transition-all duration-300 bg-gray-200 text-gray-700 hover:bg-red-100 hover:text-red-700"
+                                    class="px-4 py-2 rounded-xl font-semibold text-sm transition-all duration-300 bg-gray-200 text-gray-700 hover:bg-red-100 hover:text-red-700 dark:bg-slate-700 dark:text-gray-300 dark:hover:bg-red-500/20 dark:hover:text-red-300"
                                 >
                                     <i class="fas fa-arrow-down mr-1"></i>Pengeluaran
                                 </button>
                                 <button
                                     onclick="clearTransactionFilters()"
-                                    class="px-4 py-2 rounded-xl font-semibold text-sm transition-all duration-300 bg-gray-100 text-gray-600 hover:bg-gray-200"
+                                    class="px-4 py-2 rounded-xl font-semibold text-sm transition-all duration-300 bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-slate-700 dark:text-gray-300 dark:hover:bg-slate-600"
                                 >
                                     <i class="fas fa-times mr-1"></i>Reset
                                 </button>
@@ -1597,13 +1622,13 @@
 
         function renderSettingsPage() {
             const hasPin = auth.hasPin();
-            
+            const profile = appState.profile || { name: 'Pengguna Frugal', currency: 'IDR', theme: 'light' };
             return `
                 <div class="space-y-6 sm:space-y-8 fade-in">
                     <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
                         <div>
-                            <h1 class="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">Pengaturan</h1>
-                            <p class="text-gray-600 text-sm sm:text-base mt-1">Kelola preferensi dan keamanan akun Anda</p>
+                            <h1 class="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent dark:from-indigo-400 dark:to-purple-400">Pengaturan</h1>
+                            <p class="text-gray-600 text-sm sm:text-base mt-1 dark:text-gray-400">Kelola preferensi dan keamanan akun Anda</p>
                         </div>
                         <div class="flex items-center space-x-2 bg-white/60 backdrop-blur-sm px-4 py-2 rounded-2xl border border-white/40">
                             <div class="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
@@ -1612,12 +1637,12 @@
                     </div>
                     
                     <!-- Profile Settings -->
-                    <div class="bg-white/70 backdrop-blur-sm rounded-3xl p-6 sm:p-8 shadow-xl border border-white/20">
+                    <div class="bg-white/70 backdrop-blur-sm rounded-3xl p-6 sm:p-8 shadow-xl border border-white/20 dark:bg-slate-800/70 dark:border-slate-700">
                         <div class="flex items-center mb-6">
                             <div class="w-8 h-8 bg-gradient-to-br from-blue-400 to-indigo-500 rounded-2xl flex items-center justify-center mr-3 shadow-lg">
                                 <i class="fas fa-user text-white text-sm"></i>
                             </div>
-                            <h3 class="text-lg sm:text-xl font-bold text-gray-800">Pengaturan Profil</h3>
+                            <h3 class="text-lg sm:text-xl font-bold text-gray-800 dark:text-white">Pengaturan Profil</h3>
                         </div>
                         <form class="space-y-4 sm:space-y-6">
                             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
@@ -1631,8 +1656,8 @@
                                     <input
                                         type="text"
                                         id="full-name"
-                                        value="Pengguna Frugal"
-                                        class="w-full px-4 sm:px-6 py-3 sm:py-4 border-2 border-gray-200 rounded-2xl focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 font-medium bg-white/80 backdrop-blur-sm transition-all duration-300 text-sm sm:text-base shadow-sm group-hover:border-blue-300"
+                                        value="${profile.name}"
+                                        class="w-full px-4 sm:px-6 py-3 sm:py-4 border-2 border-gray-200 rounded-2xl focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 font-medium bg-white/80 backdrop-blur-sm transition-all duration-300 text-sm sm:text-base shadow-sm group-hover:border-blue-300 dark:bg-slate-700 dark:border-slate-600 dark:text-white dark:placeholder-gray-400"
                                     />
                                 </div>
                                 <div class="relative group">
@@ -1646,7 +1671,7 @@
                                         type="email"
                                         value="${appState.user.email}"
                                         disabled
-                                        class="w-full px-4 sm:px-6 py-3 sm:py-4 border-2 border-gray-200 rounded-2xl bg-gray-100 text-gray-500 font-medium text-sm sm:text-base shadow-sm"
+                                        class="w-full px-4 sm:px-6 py-3 sm:py-4 border-2 border-gray-200 rounded-2xl bg-gray-100 text-gray-500 font-medium text-sm sm:text-base shadow-sm dark:bg-slate-700 dark:border-slate-600 dark:text-gray-400"
                                     />
                                 </div>
                                 <div class="relative group">
@@ -1656,11 +1681,11 @@
                                         </div>
                                         Mata Uang
                                     </label>
-                                    <select id="currency" class="w-full px-4 sm:px-6 py-3 sm:py-4 border-2 border-gray-200 rounded-2xl focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 font-medium bg-white/80 backdrop-blur-sm transition-all duration-300 text-sm sm:text-base shadow-sm group-hover:border-blue-300">
-                                        <option value="IDR" selected>🇮🇩 IDR (Rp)</option>
-                                        <option value="USD">🇺🇸 USD ($)</option>
-                                        <option value="EUR">🇪🇺 EUR (€)</option>
-                                        <option value="GBP">🇬🇧 GBP (£)</option>
+                                    <select id="currency" class="w-full px-4 sm:px-6 py-3 sm:py-4 border-2 border-gray-200 rounded-2xl focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 font-medium bg-white/80 backdrop-blur-sm transition-all duration-300 text-sm sm:text-base shadow-sm group-hover:border-blue-300 dark:bg-slate-700 dark:border-slate-600 dark:text-white">
+                                        <option value="IDR" ${profile.currency === 'IDR' ? 'selected' : ''}>🇮🇩 IDR (Rp)</option>
+                                        <option value="USD" ${profile.currency === 'USD' ? 'selected' : ''}>🇺🇸 USD ($)</option>
+                                        <option value="EUR" ${profile.currency === 'EUR' ? 'selected' : ''}>🇪🇺 EUR (€)</option>
+                                        <option value="GBP" ${profile.currency === 'GBP' ? 'selected' : ''}>🇬🇧 GBP (£)</option>
                                     </select>
                                 </div>
                                 <div class="relative group">
@@ -1670,10 +1695,10 @@
                                         </div>
                                         Tema
                                     </label>
-                                    <select id="theme" class="w-full px-4 sm:px-6 py-3 sm:py-4 border-2 border-gray-200 rounded-2xl focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 font-medium bg-white/80 backdrop-blur-sm transition-all duration-300 text-sm sm:text-base shadow-sm group-hover:border-blue-300">
-                                        <option value="light" selected>🌞 Terang</option>
-                                        <option value="dark">🌙 Gelap</option>
-                                        <option value="auto">🔄 Otomatis</option>
+                                    <select id="theme" class="w-full px-4 sm:px-6 py-3 sm:py-4 border-2 border-gray-200 rounded-2xl focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 font-medium bg-white/80 backdrop-blur-sm transition-all duration-300 text-sm sm:text-base shadow-sm group-hover:border-blue-300 dark:bg-slate-700 dark:border-slate-600 dark:text-white">
+                                        <option value="light" ${profile.theme === 'light' ? 'selected' : ''}>🌞 Terang</option>
+                                        <option value="dark" ${profile.theme === 'dark' ? 'selected' : ''}>🌙 Gelap</option>
+                                        <option value="auto" ${profile.theme === 'auto' ? 'selected' : ''}>🔄 Otomatis</option>
                                     </select>
                                 </div>
                             </div>
@@ -1688,24 +1713,24 @@
                     </div>
 
                     <!-- Security Settings -->
-                    <div class="bg-white/70 backdrop-blur-sm rounded-3xl p-6 sm:p-8 shadow-xl border border-white/20">
+                    <div class="bg-white/70 backdrop-blur-sm rounded-3xl p-6 sm:p-8 shadow-xl border border-white/20 dark:bg-slate-800/70 dark:border-slate-700">
                         <div class="flex items-center mb-6">
                             <div class="w-8 h-8 bg-gradient-to-br from-red-400 to-rose-500 rounded-2xl flex items-center justify-center mr-3 shadow-lg">
                                 <i class="fas fa-shield-alt text-white text-sm"></i>
                             </div>
-                            <h3 class="text-lg sm:text-xl font-bold text-gray-800">Keamanan</h3>
+                            <h3 class="text-lg sm:text-xl font-bold text-gray-800 dark:text-white">Keamanan</h3>
                         </div>
                         
                         <!-- PIN Settings -->
                         <div class="space-y-4 sm:space-y-6">
-                            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between p-4 sm:p-6 bg-white/50 rounded-2xl border border-white/30">
+                            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between p-4 sm:p-6 bg-white/50 rounded-2xl border border-white/30 dark:bg-slate-700/50 dark:border-slate-600">
                                 <div class="flex items-center space-x-3 sm:space-x-4 mb-4 sm:mb-0">
                                     <div class="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-${hasPin ? 'green' : 'gray'}-400 to-${hasPin ? 'emerald' : 'gray'}-500 rounded-2xl flex items-center justify-center shadow-lg">
                                         <i class="fas fa-${hasPin ? 'lock' : 'unlock'} text-white text-sm"></i>
                                     </div>
                                     <div>
-                                        <h4 class="font-semibold text-gray-800 text-sm sm:text-base">PIN Keamanan</h4>
-                                        <p class="text-xs sm:text-sm text-gray-500">
+                                        <h4 class="font-semibold text-gray-800 text-sm sm:text-base dark:text-gray-200">PIN Keamanan</h4>
+                                        <p class="text-xs sm:text-sm text-gray-500 dark:text-gray-400">
                                             ${hasPin ? 'PIN aktif - Akun Anda terlindungi' : 'Tambahkan PIN untuk keamanan ekstra'}
                                         </p>
                                     </div>
@@ -1738,36 +1763,36 @@
                     </div>
 
                     <!-- Data Management -->
-                    <div class="bg-white/70 backdrop-blur-sm rounded-3xl p-6 sm:p-8 shadow-xl border border-white/20">
+                    <div class="bg-white/70 backdrop-blur-sm rounded-3xl p-6 sm:p-8 shadow-xl border border-white/20 dark:bg-slate-800/70 dark:border-slate-700">
                         <div class="flex items-center mb-6">
                             <div class="w-8 h-8 bg-gradient-to-br from-purple-400 to-pink-500 rounded-2xl flex items-center justify-center mr-3 shadow-lg">
                                 <i class="fas fa-database text-white text-sm"></i>
                             </div>
-                            <h3 class="text-lg sm:text-xl font-bold text-gray-800">Manajemen Data</h3>
+                            <h3 class="text-lg sm:text-xl font-bold text-gray-800 dark:text-white">Manajemen Data</h3>
                         </div>
                         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-                            <button onclick="exportData()" class="flex flex-col items-center p-4 sm:p-6 bg-white/50 rounded-2xl border border-white/30 hover:bg-white/70 transition-all duration-300 group">
+                            <button onclick="exportData()" class="flex flex-col items-center p-4 sm:p-6 bg-white/50 rounded-2xl border border-white/30 hover:bg-white/70 transition-all duration-300 group dark:bg-slate-700/50 dark:border-slate-600 dark:hover:bg-slate-700">
                                 <div class="w-12 h-12 sm:w-16 sm:h-16 bg-gradient-to-br from-green-400 to-emerald-500 rounded-2xl flex items-center justify-center mb-3 sm:mb-4 shadow-lg group-hover:scale-110 transition-transform">
                                     <i class="fas fa-download text-white text-lg sm:text-xl"></i>
                                 </div>
-                                <h4 class="font-semibold text-gray-800 text-sm sm:text-base mb-1">Ekspor Data</h4>
-                                <p class="text-xs sm:text-sm text-gray-500 text-center">Unduh semua data keuangan Anda</p>
+                                <h4 class="font-semibold text-gray-800 text-sm sm:text-base mb-1 dark:text-gray-200">Ekspor Data</h4>
+                                <p class="text-xs sm:text-sm text-gray-500 text-center dark:text-gray-400">Unduh semua data keuangan Anda</p>
                             </button>
                             
-                            <button onclick="backupData()" class="flex flex-col items-center p-4 sm:p-6 bg-white/50 rounded-2xl border border-white/30 hover:bg-white/70 transition-all duration-300 group">
+                            <button onclick="backupData()" class="flex flex-col items-center p-4 sm:p-6 bg-white/50 rounded-2xl border border-white/30 hover:bg-white/70 transition-all duration-300 group dark:bg-slate-700/50 dark:border-slate-600 dark:hover:bg-slate-700">
                                 <div class="w-12 h-12 sm:w-16 sm:h-16 bg-gradient-to-br from-blue-400 to-indigo-500 rounded-2xl flex items-center justify-center mb-3 sm:mb-4 shadow-lg group-hover:scale-110 transition-transform">
                                     <i class="fas fa-cloud-upload-alt text-white text-lg sm:text-xl"></i>
                                 </div>
-                                <h4 class="font-semibold text-gray-800 text-sm sm:text-base mb-1">Backup Data</h4>
-                                <p class="text-xs sm:text-sm text-gray-500 text-center">Simpan data ke cloud storage</p>
+                                <h4 class="font-semibold text-gray-800 text-sm sm:text-base mb-1 dark:text-gray-200">Backup Data</h4>
+                                <p class="text-xs sm:text-sm text-gray-500 text-center dark:text-gray-400">Simpan data ke cloud storage</p>
                             </button>
                             
-                            <button onclick="clearAllData()" class="flex flex-col items-center p-4 sm:p-6 bg-white/50 rounded-2xl border border-white/30 hover:bg-red-50 transition-all duration-300 group">
+                            <button onclick="clearAllData()" class="flex flex-col items-center p-4 sm:p-6 bg-white/50 rounded-2xl border border-white/30 hover:bg-red-50 transition-all duration-300 group dark:bg-slate-700/50 dark:border-slate-600 dark:hover:bg-red-500/10">
                                 <div class="w-12 h-12 sm:w-16 sm:h-16 bg-gradient-to-br from-red-400 to-rose-500 rounded-2xl flex items-center justify-center mb-3 sm:mb-4 shadow-lg group-hover:scale-110 transition-transform">
                                     <i class="fas fa-trash text-white text-lg sm:text-xl"></i>
                                 </div>
-                                <h4 class="font-semibold text-gray-800 text-sm sm:text-base mb-1">Hapus Semua</h4>
-                                <p class="text-xs sm:text-sm text-gray-500 text-center">Reset semua data aplikasi</p>
+                                <h4 class="font-semibold text-gray-800 text-sm sm:text-base mb-1 dark:text-gray-200">Hapus Semua</h4>
+                                <p class="text-xs sm:text-sm text-gray-500 text-center dark:text-gray-400">Reset semua data aplikasi</p>
                             </button>
                         </div>
                     </div>
@@ -3015,7 +3040,7 @@
             const amountToAdd = parseFloat(amountInput.value);
 
             if (isNaN(amountToAdd) || amountToAdd <= 0) {
-                alert('Silakan masukkan jumlah yang valid untuk ditambahkan.');
+                showSyncStatus('error', 'Silakan masukkan jumlah yang valid untuk ditambahkan.');
                 amountInput.focus();
                 return;
             }
@@ -3068,7 +3093,7 @@
 
         function showEditGoalForm(goalId) {
             const goal = appState.goals.find(g => g.id === goalId);
-            if (!goal) return;
+            if (!goal) { showSyncStatus('error', 'Target tidak ditemukan.'); return; }
 
             const modal = document.createElement('div');
             modal.id = 'edit-goal-modal';
@@ -3151,7 +3176,7 @@
 
             const goalIndex = appState.goals.findIndex(g => g.id === goalId);
             if (goalIndex === -1) {
-                alert('Error: Target tidak ditemukan.');
+                showSyncStatus('error', 'Error: Target tidak ditemukan.');
                 return;
             }
 
@@ -3195,7 +3220,7 @@
                     appState.budgets = [];
                     appState.goals = [];
                     render();
-                    alert('All data has been deleted successfully.');
+                    showSyncStatus('success', 'Semua data berhasil dihapus.');
                 }
             }
         }
@@ -3360,17 +3385,17 @@
             const confirmPin = document.getElementById('confirm-pin').value;
             
             if (newPin !== confirmPin) {
-                alert('PIN tidak cocok. Silakan coba lagi.');
+                showSyncStatus('error', 'PIN tidak cocok. Silakan coba lagi.');
                 return;
             }
             
             if (newPin.length !== 6 || !/^\d{6}$/.test(newPin)) {
-                alert('PIN harus 6 digit angka.');
+                showSyncStatus('error', 'PIN harus 6 digit angka.');
                 return;
             }
             
             if (auth.setPin(newPin)) {
-                alert('PIN berhasil diatur! Akun Anda sekarang lebih aman.');
+                showSyncStatus('success', 'PIN berhasil diatur! Akun Anda sekarang lebih aman.');
                 event.target.closest('.fixed').remove();
                 render();
             } else {
@@ -3387,36 +3412,36 @@
             // Verify old PIN
             const currentPin = localStorage.getItem(`pin_${appState.user.id}`);
             if (oldPin !== currentPin) {
-                alert('PIN lama tidak benar.');
+                showSyncStatus('error', 'PIN lama tidak benar.');
                 return;
             }
             
             if (newPin !== confirmPin) {
-                alert('PIN baru tidak cocok. Silakan coba lagi.');
+                showSyncStatus('error', 'PIN baru tidak cocok. Silakan coba lagi.');
                 return;
             }
             
             if (newPin.length !== 6 || !/^\d{6}$/.test(newPin)) {
-                alert('PIN baru harus 6 digit angka.');
+                showSyncStatus('error', 'PIN baru harus 6 digit angka.');
                 return;
             }
             
             if (auth.setPin(newPin)) {
-                alert('PIN berhasil diubah!');
+                showSyncStatus('success', 'PIN berhasil diubah!');
                 event.target.closest('.fixed').remove();
                 render();
             } else {
-                alert('Gagal mengubah PIN. Silakan coba lagi.');
+                showSyncStatus('error', 'Gagal mengubah PIN. Silakan coba lagi.');
             }
         }
 
         function removePinSecurity() {
             if (confirm('Apakah Anda yakin ingin menghapus PIN keamanan? Akun Anda akan kurang aman.')) {
                 if (auth.removePin()) {
-                    alert('PIN keamanan berhasil dihapus.');
+                    showSyncStatus('success', 'PIN keamanan berhasil dihapus.');
                     render();
                 } else {
-                    alert('Gagal menghapus PIN. Silakan coba lagi.');
+                    showSyncStatus('error', 'Gagal menghapus PIN. Silakan coba lagi.');
                 }
             }
         }
@@ -3426,16 +3451,22 @@
             const currency = document.getElementById('currency').value;
             const theme = document.getElementById('theme').value;
             
-            // Save to localStorage
             if (appState.user) {
                 const userId = appState.user.id;
+                // Update app state
+                appState.profile = { name, currency, theme };
+                
+                // Save to localStorage
                 localStorage.setItem(`profile_${userId}`, JSON.stringify({
                     name,
                     currency,
                     theme
                 }));
                 
-                alert('Pengaturan profil berhasil disimpan!');
+                // Apply theme immediately
+                applyTheme(theme);
+                
+                showSyncStatus('success', 'Pengaturan profil berhasil disimpan!');
             }
         }
 
@@ -3460,16 +3491,16 @@
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
             
-            alert('Data berhasil diekspor!');
+            showSyncStatus('success', 'Data berhasil diekspor!');
         }
 
         function backupData() {
-            alert('Fitur backup ke cloud akan segera tersedia!');
+            showSyncStatus('info', 'Fitur backup ke cloud akan segera tersedia!');
         }
 
         function exportAllData() {
             if (appState.user?.role !== 'admin') {
-                alert('Akses ditolak. Hanya admin yang dapat mengekspor semua data.');
+                showSyncStatus('error', 'Akses ditolak. Hanya admin yang dapat mengekspor semua data.');
                 return;
             }
             
@@ -3501,13 +3532,13 @@
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
             
-            alert('Semua data sistem berhasil diekspor!');
+            showSyncStatus('success', 'Semua data sistem berhasil diekspor!');
         }
 
         // Admin User Management Functions
         function showAddUserModal() {
             if (appState.user?.role !== 'admin') {
-                alert('Akses ditolak. Hanya admin yang dapat menambah user.');
+                showSyncStatus('error', 'Akses ditolak. Hanya admin yang dapat menambah user.');
                 return;
             }
             
@@ -3593,20 +3624,20 @@
             // Validate email format
             const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
             if (!emailRegex.test(email)) {
-                alert('Format email tidak valid!');
+                showSyncStatus('error', 'Format email tidak valid!');
                 return;
             }
             
             // Check if user already exists
             const userId = email.replace(/[@.]/g, '_');
             if (localStorage.getItem(`pin_${userId}`)) {
-                alert('User dengan email ini sudah ada!');
+                showSyncStatus('error', 'User dengan email ini sudah ada!');
                 return;
             }
             
             // Validate PIN
             if (pin.length !== 6 || !/^\d{6}$/.test(pin)) {
-                alert('PIN harus 6 digit angka!');
+                showSyncStatus('error', 'PIN harus 6 digit angka!');
                 return;
             }
             
@@ -3652,20 +3683,20 @@
 
         function resetUserPin(email) {
             if (appState.user?.role !== 'admin') {
-                alert('Akses ditolak. Hanya admin yang dapat reset PIN user.');
+                showSyncStatus('error', 'Akses ditolak. Hanya admin yang dapat reset PIN user.');
                 return;
             }
             
             if (confirm(`Reset PIN untuk user ${email}?\n\nPIN akan direset ke 000000`)) {
                 const userId = email.replace(/[@.]/g, '_');
                 localStorage.setItem(`pin_${userId}`, '000000');
-                alert(`PIN user ${email} berhasil direset ke 000000`);
+                showSyncStatus('success', `PIN user ${email} berhasil direset ke 000000`);
             }
         }
 
         function exportUserData(email) {
             if (appState.user?.role !== 'admin') {
-                alert('Akses ditolak. Hanya admin yang dapat export data user.');
+                showSyncStatus('error', 'Akses ditolak. Hanya admin yang dapat export data user.');
                 return;
             }
             
@@ -3690,18 +3721,18 @@
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
             
-            alert(`Data user ${email} berhasil diekspor!`);
+            showSyncStatus('success', `Data user ${email} berhasil diekspor!`);
         }
 
         function deleteUser(email) {
             if (appState.user?.role !== 'admin') {
-                alert('Akses ditolak. Hanya admin yang dapat menghapus user.');
+                showSyncStatus('error', 'Akses ditolak. Hanya admin yang dapat menghapus user.');
                 return;
             }
             
             const isDefaultUser = ['demo@frugal.com', 'user@example.com', 'test@budget.com'].includes(email);
             if (isDefaultUser) {
-                alert('User default tidak dapat dihapus!');
+                showSyncStatus('error', 'User default tidak dapat dihapus!');
                 return;
             }
             
@@ -3715,7 +3746,7 @@
                 localStorage.removeItem(`goals_${userId}`);
                 localStorage.removeItem(`profile_${userId}`);
                 
-                alert(`User ${email} dan semua datanya berhasil dihapus!`);
+                showSyncStatus('success', `User ${email} dan semua datanya berhasil dihapus!`);
                 render(); // Refresh the page
             }
         }
