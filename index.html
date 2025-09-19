@@ -13,6 +13,8 @@
         }
     </script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800;900&display=swap');
         
@@ -82,6 +84,10 @@
                 height: var(--bar-height);
             }
         }
+
+        /* Style to hide buttons during PDF export */
+        .pdf-export-mode button, .pdf-export-mode .hidden-on-export { display: none !important; }
+
     </style>
 </head>
 <body>
@@ -246,6 +252,23 @@
                     .from('goals')
                     .insert([goalData])
                     .select();
+                return { data, error };
+            },
+
+            async updateGoal(goalId, updates) {
+                const { data, error } = await supabase
+                    .from('goals')
+                    .update(updates)
+                    .eq('id', goalId)
+                    .select();
+                return { data, error };
+            },
+
+            async deleteGoal(goalId) {
+                const { data, error } = await supabase
+                    .from('goals')
+                    .delete()
+                    .eq('id', goalId);
                 return { data, error };
             },
             
@@ -698,13 +721,35 @@
             });
         }
 
-        function saveGoal(goal) {
+        async function createGoal(goal) {
             if (!appState.user) return;
             
             const userId = appState.user.id;
             goal.id = Date.now();
+            goal.user_id = userId;
+            goal.created_at = new Date().toISOString();
+
             appState.goals.push(goal);
-            localStorage.setItem(`goals_${userId}`, JSON.stringify(appState.goals));
+
+            try {
+                localStorage.setItem(`goals_${userId}`, JSON.stringify(appState.goals));
+                
+                if (useSupabase) {
+                    const { data, error } = await db.createGoal(goal);
+                    if (error) {
+                        showSyncStatus('error', 'Gagal sync target ke cloud');
+                        console.error('Supabase goal create error:', error);
+                    } else {
+                        showSyncStatus('success', 'Target dibuat & disinkronisasi');
+                    }
+                } else {
+                    showSyncStatus('success', 'Target berhasil dibuat (lokal)');
+                }
+            } catch (error) {
+                console.error('Error creating goal:', error);
+                showSyncStatus('error', 'Gagal membuat target');
+                appState.goals.pop(); // Rollback
+            }
         }
 
         function renderLoadingScreen() {
@@ -1032,6 +1077,10 @@
         }
 
         function renderOverviewPage() {
+            const syncStatusIndicator = useSupabase 
+                ? `<div class="flex items-center space-x-2 bg-green-100 dark:bg-green-500/20 px-3 py-1 rounded-full"><div class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div><span class="text-xs font-medium text-green-700 dark:text-green-300">Tersinkronisasi</span></div>`
+                : `<div class="flex items-center space-x-2 bg-yellow-100 dark:bg-yellow-500/20 px-3 py-1 rounded-full"><div class="w-2 h-2 bg-yellow-500 rounded-full"></div><span class="text-xs font-medium text-yellow-700 dark:text-yellow-300">Mode Lokal</span></div>`;
+
             const totalIncome = appState.transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
             const totalExpense = appState.transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
             const balance = totalIncome - totalExpense;
@@ -1043,11 +1092,9 @@
 
             for (let i = 5; i >= 0; i--) {
                 const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
-                const year = d.getFullYear();
-                const month = d.getMonth();
-                const key = `${year}-${String(month + 1).padStart(2, '0')}`;
+                const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
                 trendData[key] = {
-                    label: monthNames[month],
+                    label: monthNames[d.getMonth()],
                     income: 0,
                     expense: 0
                 };
@@ -1055,10 +1102,8 @@
 
             appState.transactions.forEach(t => {
                 const d = new Date(t.date);
-                const year = d.getFullYear();
-                const month = d.getMonth();
-                const key = `${year}-${String(month + 1).padStart(2, '0')}`;
-
+                const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+                
                 if (trendData[key]) {
                     if (t.type === 'income') {
                         trendData[key].income += t.amount;
@@ -1070,15 +1115,12 @@
 
             return `
                 <div class="space-y-8 fade-in">
-                    <div class="flex items-center justify-between">
+                    <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
                         <div>
                             <h1 class="text-3xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent dark:from-indigo-400 dark:to-purple-400">Ringkasan Keuangan</h1>
                             <p class="text-gray-600 mt-2 dark:text-gray-400">Pantau kondisi keuangan Anda secara real-time</p>
                         </div>
-                        <div class="text-right">
-                            <p class="text-sm text-gray-500 dark:text-gray-400">Terakhir diperbarui</p>
-                            <p class="text-sm font-medium text-gray-700 dark:text-gray-300">${new Date().toLocaleDateString('id-ID')}</p>
-                        </div>
+                        ${syncStatusIndicator}
                     </div>
                     
                     <!-- Modern Summary Cards -->
@@ -1313,6 +1355,10 @@
         }
 
         function renderTransactionsPage() {
+            const syncStatusIndicator = useSupabase 
+                ? `<div class="flex items-center space-x-2 bg-green-100 dark:bg-green-500/20 px-3 py-1 rounded-full"><div class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div><span class="text-xs font-medium text-green-700 dark:text-green-300">Tersinkronisasi</span></div>`
+                : `<div class="flex items-center space-x-2 bg-yellow-100 dark:bg-yellow-500/20 px-3 py-1 rounded-full"><div class="w-2 h-2 bg-yellow-500 rounded-full"></div><span class="text-xs font-medium text-yellow-700 dark:text-yellow-300">Mode Lokal</span></div>`;
+
             return `
                 <div class="space-y-6 fade-in">
                     <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
@@ -1320,10 +1366,13 @@
                             <h1 class="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent dark:from-indigo-400 dark:to-purple-400">Transaksi</h1>
                             <p class="text-gray-600 text-sm sm:text-base mt-1 dark:text-gray-400">Kelola semua transaksi keuangan Anda</p>
                         </div>
-                        <button onclick="showQuickAddModal()" class="w-full sm:w-auto bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white px-4 sm:px-6 py-3 sm:py-2 rounded-2xl font-semibold shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300 flex items-center justify-center">
-                            <i class="fas fa-paper-plane mr-2"></i>
-                            <span class="text-sm sm:text-base">Tambah Transaksi</span>
-                        </button>
+                        <div class="flex flex-col sm:flex-row items-center gap-3">
+                            ${syncStatusIndicator}
+                            <button onclick="showQuickAddModal()" class="w-full sm:w-auto bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white px-4 sm:px-6 py-3 sm:py-2 rounded-2xl font-semibold shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300 flex items-center justify-center">
+                                <i class="fas fa-paper-plane mr-2"></i>
+                                <span class="text-sm sm:text-base">Tambah Transaksi</span>
+                            </button>
+                        </div>
                     </div>
 
                     <!-- Search and Filter Section -->
@@ -1392,6 +1441,10 @@
         }
 
         function renderBudgetsPage() {
+            const syncStatusIndicator = useSupabase 
+                ? `<div class="flex items-center space-x-2 bg-green-100 dark:bg-green-500/20 px-3 py-1 rounded-full"><div class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div><span class="text-xs font-medium text-green-700 dark:text-green-300">Tersinkronisasi</span></div>`
+                : `<div class="flex items-center space-x-2 bg-yellow-100 dark:bg-yellow-500/20 px-3 py-1 rounded-full"><div class="w-2 h-2 bg-yellow-500 rounded-full"></div><span class="text-xs font-medium text-yellow-700 dark:text-yellow-300">Mode Lokal</span></div>`;
+
             return `
                 <div class="space-y-6 fade-in">
                     <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
@@ -1399,10 +1452,13 @@
                             <h1 class="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent dark:from-indigo-400 dark:to-purple-400">Anggaran</h1>
                             <p class="text-gray-600 text-sm sm:text-base mt-1 dark:text-gray-400">Kelola anggaran bulanan Anda</p>
                         </div>
-                        <button onclick="showAddBudgetForm()" class="w-full sm:w-auto bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white px-4 sm:px-6 py-3 sm:py-2 rounded-2xl font-semibold shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300 flex items-center justify-center">
-                            <i class="fas fa-paper-plane mr-2"></i>
-                            <span class="text-sm sm:text-base">Tambah Anggaran</span>
-                        </button>
+                        <div class="flex flex-col sm:flex-row items-center gap-3">
+                            ${syncStatusIndicator}
+                            <button onclick="showAddBudgetForm()" class="w-full sm:w-auto bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white px-4 sm:px-6 py-3 sm:py-2 rounded-2xl font-semibold shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300 flex items-center justify-center">
+                                <i class="fas fa-paper-plane mr-2"></i>
+                                <span class="text-sm sm:text-base">Tambah Anggaran</span>
+                            </button>
+                        </div>
                     </div>
 
                     <div id="budget-form" class="hidden bg-white/70 dark:bg-slate-800/70 backdrop-blur-sm rounded-3xl p-6 sm:p-8 shadow-xl border border-white/20 dark:border-slate-700">
@@ -1537,6 +1593,10 @@
         }
 
         function renderReceivablesPage() {
+            const syncStatusIndicator = useSupabase 
+                ? `<div class="flex items-center space-x-2 bg-green-100 dark:bg-green-500/20 px-3 py-1 rounded-full"><div class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div><span class="text-xs font-medium text-green-700 dark:text-green-300">Tersinkronisasi</span></div>`
+                : `<div class="flex items-center space-x-2 bg-yellow-100 dark:bg-yellow-500/20 px-3 py-1 rounded-full"><div class="w-2 h-2 bg-yellow-500 rounded-full"></div><span class="text-xs font-medium text-yellow-700 dark:text-yellow-300">Mode Lokal</span></div>`;
+
             const totalUnpaid = appState.receivables
                 .filter(r => r.status === 'unpaid')
                 .reduce((sum, r) => sum + r.amount, 0);
@@ -1551,10 +1611,13 @@
                             <h1 class="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent dark:from-green-400 dark:to-emerald-400">Catatan Piutang</h1>
                             <p class="text-gray-600 text-sm sm:text-base mt-1 dark:text-gray-400">Kelola dan lacak semua piutang Anda</p>
                         </div>
-                        <button onclick="showAddReceivableForm()" class="w-full sm:w-auto bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white px-4 sm:px-6 py-3 sm:py-2 rounded-2xl font-semibold shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300 flex items-center justify-center">
-                            <i class="fas fa-plus mr-2"></i>
-                            <span class="text-sm sm:text-base">Tambah Piutang</span>
-                        </button>
+                        <div class="flex flex-col sm:flex-row items-center gap-3">
+                            ${syncStatusIndicator}
+                            <button onclick="showAddReceivableForm()" class="w-full sm:w-auto bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white px-4 sm:px-6 py-3 sm:py-2 rounded-2xl font-semibold shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300 flex items-center justify-center">
+                                <i class="fas fa-plus mr-2"></i>
+                                <span class="text-sm sm:text-base">Tambah Piutang</span>
+                            </button>
+                        </div>
                     </div>
 
                     <!-- Stats Cards -->
@@ -1648,6 +1711,10 @@
         }
 
         function renderGoalsPage() {
+            const syncStatusIndicator = useSupabase 
+                ? `<div class="flex items-center space-x-2 bg-green-100 dark:bg-green-500/20 px-3 py-1 rounded-full"><div class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div><span class="text-xs font-medium text-green-700 dark:text-green-300">Tersinkronisasi</span></div>`
+                : `<div class="flex items-center space-x-2 bg-yellow-100 dark:bg-yellow-500/20 px-3 py-1 rounded-full"><div class="w-2 h-2 bg-yellow-500 rounded-full"></div><span class="text-xs font-medium text-yellow-700 dark:text-yellow-300">Mode Lokal</span></div>`;
+
             return `
                 <div class="space-y-6 fade-in">
                     <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
@@ -1655,10 +1722,13 @@
                             <h1 class="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">Target Keuangan</h1>
                             <p class="text-gray-600 text-sm sm:text-base mt-1">Wujudkan impian finansial Anda</p>
                         </div>
-                        <button onclick="showAddGoalForm()" class="w-full sm:w-auto bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white px-4 sm:px-6 py-3 sm:py-2 rounded-2xl font-semibold shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300 flex items-center justify-center">
-                            <i class="fas fa-paper-plane mr-2"></i>
-                            <span class="text-sm sm:text-base">Tambah Target</span>
-                        </button>
+                        <div class="flex flex-col sm:flex-row items-center gap-3">
+                            ${syncStatusIndicator}
+                            <button onclick="showAddGoalForm()" class="w-full sm:w-auto bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white px-4 sm:px-6 py-3 sm:py-2 rounded-2xl font-semibold shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300 flex items-center justify-center">
+                                <i class="fas fa-paper-plane mr-2"></i>
+                                <span class="text-sm sm:text-base">Tambah Target</span>
+                            </button>
+                        </div>
                     </div>
 
                     <div id="goal-form" class="hidden bg-white/70 backdrop-blur-sm rounded-3xl p-6 sm:p-8 shadow-xl border border-white/20">
@@ -1703,7 +1773,7 @@
                                 <button
                                     type="submit"
                                     class="flex-1 sm:flex-none bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white px-4 sm:px-8 py-3 sm:py-2 rounded-2xl font-semibold shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300 text-sm sm:text-base"
-                                >
+                                > 
                                     <i class="fas fa-check mr-2"></i>Buat Target
                                 </button>
                                 <button
@@ -1756,7 +1826,7 @@
                                             <button onclick="showEditGoalForm(${goal.id})" class="bg-yellow-500 hover:bg-yellow-600 text-white font-semibold px-3 py-2 rounded-xl transition-all duration-300 flex-shrink-0">
                                                 <i class="fas fa-edit"></i>
                                             </button>
-                                            <button onclick="handleDeleteGoal(${goal.id})" class="bg-red-500 hover:bg-red-600 text-white font-semibold px-3 py-2 rounded-xl transition-all duration-300 flex-shrink-0">
+                                            <button onclick="deleteGoal(${goal.id})" class="bg-red-500 hover:bg-red-600 text-white font-semibold px-3 py-2 rounded-xl transition-all duration-300 flex-shrink-0">
                                                 <i class="fas fa-trash"></i>
                                             </button>
                                         </div>
@@ -1786,6 +1856,10 @@
         }
 
         function renderReportsPage() {
+            const syncStatusIndicator = useSupabase 
+                ? `<div class="flex items-center space-x-2 bg-green-100 dark:bg-green-500/20 px-3 py-1 rounded-full"><div class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div><span class="text-xs font-medium text-green-700 dark:text-green-300">Tersinkronisasi</span></div>`
+                : `<div class="flex items-center space-x-2 bg-yellow-100 dark:bg-yellow-500/20 px-3 py-1 rounded-full"><div class="w-2 h-2 bg-yellow-500 rounded-full"></div><span class="text-xs font-medium text-yellow-700 dark:text-yellow-300">Mode Lokal</span></div>`;
+
             // Calculate actual data from transactions
             const totalIncome = appState.transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
             const totalExpense = appState.transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
@@ -1807,6 +1881,36 @@
                 .sort(([,a], [,b]) => b - a)
                 .slice(0, 5);
 
+            // Financial Health Score Calculations
+            const totalBudgetedAmount = appState.budgets.reduce((sum, b) => sum + b.amount, 0);
+            const totalSpentOnBudgetCategories = appState.budgets.reduce((total, budget) => {
+                const spent = appState.transactions
+                    .filter(t => t.type === 'expense' && t.category === budget.category)
+                    .reduce((sum, t) => sum + t.amount, 0);
+                return total + spent;
+            }, 0);
+
+            const budgetAdherence = totalBudgetedAmount > 0 ? Math.max(0, 100 - ((totalSpentOnBudgetCategories / totalBudgetedAmount) * 100)) : 100;
+            const savingsRateScore = Math.min(100, (savingsRate / 20) * 100); // 20% savings rate is 100 score
+            const budgetAdherenceScore = budgetAdherence; // Direct mapping
+            
+            // Overall score (weighted average: 60% savings, 40% budget)
+            const overallScore = (savingsRateScore * 0.6) + (budgetAdherenceScore * 0.4);
+
+            // Data processing for the trend chart (same as overview)
+            const trendData = {};
+            const monthNames = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+            const today = new Date();
+            for (let i = 5; i >= 0; i--) {
+                const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+                const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+                trendData[key] = { label: monthNames[d.getMonth()], income: 0, expense: 0 };
+            }
+            appState.transactions.forEach(t => {
+                const d = new Date(t.date);
+                const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+                if (trendData[key]) { trendData[key][t.type] += t.amount; }
+            });
             return `
                 <div class="space-y-6 sm:space-y-8 fade-in">
                     <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
@@ -1814,12 +1918,14 @@
                             <h1 class="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">Laporan Keuangan</h1>
                             <p class="text-gray-600 text-sm sm:text-base mt-1">Analisis mendalam kondisi keuangan Anda</p>
                         </div>
-                        <div class="flex flex-col sm:flex-row gap-2 sm:gap-3">
-                            <button class="w-full sm:w-auto bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white px-4 sm:px-6 py-2 sm:py-3 rounded-2xl font-semibold shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300 flex items-center justify-center">
+                        <div class="flex flex-col sm:flex-row items-center gap-3">
+                            ${syncStatusIndicator}
+                            <div class="hidden sm:block h-6 w-px bg-gray-300 dark:bg-slate-600"></div>
+                            <button onclick="exportReportToPDF()" class="w-full sm:w-auto bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white px-4 sm:px-6 py-2 sm:py-3 rounded-2xl font-semibold shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300 flex items-center justify-center">
                                 <i class="fas fa-download mr-2"></i>
                                 <span class="text-sm sm:text-base">Ekspor PDF</span>
                             </button>
-                            <button class="w-full sm:w-auto bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white px-4 sm:px-6 py-2 sm:py-3 rounded-2xl font-semibold shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300 flex items-center justify-center">
+                            <button onclick="shareReport()" class="w-full sm:w-auto bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white px-4 sm:px-6 py-2 sm:py-3 rounded-2xl font-semibold shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300 flex items-center justify-center">
                                 <i class="fas fa-share-alt mr-2"></i>
                                 <span class="text-sm sm:text-base">Bagikan</span>
                             </button>
@@ -1916,7 +2022,7 @@
                                     </div>
                                     Tren Bulanan
                                 </h3>
-                                <select class="text-sm bg-white/80 border border-gray-200 rounded-xl px-3 py-2 focus:ring-2 focus:ring-blue-500">
+                                <select class="text-sm bg-white/80 border border-gray-200 rounded-xl px-3 py-2 focus:ring-2 focus:ring-blue-500 hidden-on-export">
                                     <option>6 Bulan Terakhir</option>
                                     <option>12 Bulan Terakhir</option>
                                     <option>Tahun Ini</option>
@@ -1936,27 +2042,27 @@
                                 </div>
                             ` : `
                                 <!-- Simple Chart Visualization -->
-                                <div class="space-y-4">
-                                    <div class="flex items-center justify-between text-sm text-gray-600">
-                                        <span>Jan</span>
-                                        <span>Feb</span>
-                                        <span>Mar</span>
-                                        <span>Apr</span>
-                                        <span>Mei</span>
-                                        <span>Jun</span>
-                                    </div>
-                                    <div class="relative h-32 sm:h-40 bg-gradient-to-t from-blue-50 to-transparent rounded-2xl p-4 flex items-end justify-between">
-                                        <div class="w-8 bg-gradient-to-t from-blue-500 to-blue-400 rounded-t-lg shadow-lg" style="height: 60%"></div>
-                                        <div class="w-8 bg-gradient-to-t from-green-500 to-green-400 rounded-t-lg shadow-lg" style="height: 80%"></div>
-                                        <div class="w-8 bg-gradient-to-t from-purple-500 to-purple-400 rounded-t-lg shadow-lg" style="height: 45%"></div>
-                                        <div class="w-8 bg-gradient-to-t from-red-500 to-red-400 rounded-t-lg shadow-lg" style="height: 70%"></div>
-                                        <div class="w-8 bg-gradient-to-t from-indigo-500 to-indigo-400 rounded-t-lg shadow-lg" style="height: 90%"></div>
-                                        <div class="w-8 bg-gradient-to-t from-pink-500 to-pink-400 rounded-t-lg shadow-lg" style="height: 65%"></div>
+                                <div class="space-y-4">${(() => {
+                                    const trendValues = Object.values(trendData);
+                                    const maxAmount = Math.max(1, ...trendValues.map(d => d.income), ...trendValues.map(d => d.expense));
+                                    return `
+                                    <div class="relative h-32 sm:h-40 bg-gradient-to-t from-blue-50 to-transparent rounded-2xl p-4 flex items-end justify-around dark:from-blue-900/50">
+                                        ${trendValues.map(monthData => {
+                                            const incomeHeight = (monthData.income / maxAmount) * 100;
+                                            const expenseHeight = (monthData.expense / maxAmount) * 100;
+                                            return `
+                                                <div class="flex items-end h-full gap-1 group relative">
+                                                    <div class="w-4 bg-gradient-to-t from-green-500 to-green-400 rounded-t-lg shadow-lg" style="height: ${incomeHeight}%" title="Pemasukan: Rp ${(monthData.income * 1000).toLocaleString('id-ID')}"></div>
+                                                    <div class="w-4 bg-gradient-to-t from-red-500 to-red-400 rounded-t-lg shadow-lg" style="height: ${expenseHeight}%" title="Pengeluaran: Rp ${(monthData.expense * 1000).toLocaleString('id-ID')}"></div>
+                                                    <div class="absolute -bottom-6 text-center w-full text-xs text-gray-500 dark:text-gray-400">${monthData.label}</div>
+                                                </div>
+                                            `;
+                                        }).join('')}
                                     </div>
                                     <div class="flex items-center justify-center space-x-6 text-xs sm:text-sm">
                                         <div class="flex items-center">
-                                            <div class="w-3 h-3 bg-gradient-to-r from-blue-400 to-blue-500 rounded-full mr-2"></div>
-                                            <span class="text-gray-600">Pemasukan</span>
+                                            <div class="w-3 h-3 bg-gradient-to-r from-green-400 to-green-500 rounded-full mr-2"></div>
+                                            <span class="text-gray-600 dark:text-gray-300">Pemasukan</span>
                                         </div>
                                         <div class="flex items-center">
                                             <div class="w-3 h-3 bg-gradient-to-r from-red-400 to-red-500 rounded-full mr-2"></div>
@@ -1964,7 +2070,7 @@
                                         </div>
                                     </div>
                                 </div>
-                            `}
+                            `;})()}</div>`}
                         </div>
 
                         <!-- Category Breakdown -->
@@ -2046,27 +2152,27 @@
                             <!-- Budget Adherence -->
                             <div class="text-center p-4 sm:p-6 bg-white/50 rounded-2xl border border-white/30">
                                 <div class="w-16 h-16 sm:w-20 sm:h-20 mx-auto mb-4 relative">
-                                    <div class="w-full h-full bg-gray-200 rounded-full"></div>
-                                    <div class="absolute inset-0 bg-gradient-to-r from-blue-400 to-indigo-500 rounded-full" style="clip-path: polygon(0 0, 85% 0, 85% 100%, 0 100%)"></div>
+                                    <div class="w-full h-full bg-gray-200 dark:bg-slate-700 rounded-full"></div>
+                                    <div class="absolute inset-0 bg-gradient-to-r from-blue-400 to-indigo-500 rounded-full" style="clip-path: polygon(0 0, ${budgetAdherence.toFixed(0)}% 0, ${budgetAdherence.toFixed(0)}% 100%, 0 100%)"></div>
                                     <div class="absolute inset-0 flex items-center justify-center">
-                                        <span class="text-lg sm:text-xl font-bold text-gray-700">85%</span>
+                                        <span class="text-lg sm:text-xl font-bold text-gray-700 dark:text-gray-200">${budgetAdherence.toFixed(0)}%</span>
                                     </div>
                                 </div>
-                                <h4 class="font-semibold text-gray-800 text-sm sm:text-base mb-1">Kepatuhan Anggaran</h4>
-                                <p class="text-xs sm:text-sm text-gray-500">Baik</p>
+                                <h4 class="font-semibold text-gray-800 dark:text-gray-100 text-sm sm:text-base mb-1">Kepatuhan Anggaran</h4>
+                                <p class="text-xs sm:text-sm text-gray-500 dark:text-gray-400">${budgetAdherence >= 90 ? 'Sangat Baik' : budgetAdherence >= 75 ? 'Baik' : 'Perlu Perbaikan'}</p>
                             </div>
                             
                             <!-- Overall Score -->
                             <div class="text-center p-4 sm:p-6 bg-white/50 rounded-2xl border border-white/30">
                                 <div class="w-16 h-16 sm:w-20 sm:h-20 mx-auto mb-4 relative">
-                                    <div class="w-full h-full bg-gray-200 rounded-full"></div>
-                                    <div class="absolute inset-0 bg-gradient-to-r from-purple-400 to-pink-500 rounded-full" style="clip-path: polygon(0 0, 78% 0, 78% 100%, 0 100%)"></div>
+                                    <div class="w-full h-full bg-gray-200 dark:bg-slate-700 rounded-full"></div>
+                                    <div class="absolute inset-0 bg-gradient-to-r from-purple-400 to-pink-500 rounded-full" style="clip-path: polygon(0 0, ${overallScore.toFixed(0)}% 0, ${overallScore.toFixed(0)}% 100%, 0 100%)"></div>
                                     <div class="absolute inset-0 flex items-center justify-center">
-                                        <span class="text-lg sm:text-xl font-bold text-gray-700">78</span>
+                                        <span class="text-lg sm:text-xl font-bold text-gray-700 dark:text-gray-200">${overallScore.toFixed(0)}</span>
                                     </div>
                                 </div>
-                                <h4 class="font-semibold text-gray-800 text-sm sm:text-base mb-1">Skor Keseluruhan</h4>
-                                <p class="text-xs sm:text-sm text-gray-500">Baik</p>
+                                <h4 class="font-semibold text-gray-800 dark:text-gray-100 text-sm sm:text-base mb-1">Skor Keseluruhan</h4>
+                                <p class="text-xs sm:text-sm text-gray-500 dark:text-gray-400">${overallScore >= 80 ? 'Sangat Baik' : overallScore >= 60 ? 'Baik' : 'Perlu Perbaikan'}</p>
                             </div>
                         </div>
                         
@@ -2097,6 +2203,10 @@
         }
 
         function renderSettingsPage() {
+            const syncStatusIndicator = useSupabase 
+                ? `<div class="flex items-center space-x-2 bg-green-100 dark:bg-green-500/20 px-3 py-1 rounded-full"><div class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div><span class="text-xs font-medium text-green-700 dark:text-green-300">Tersinkronisasi</span></div>`
+                : `<div class="flex items-center space-x-2 bg-yellow-100 dark:bg-yellow-500/20 px-3 py-1 rounded-full"><div class="w-2 h-2 bg-yellow-500 rounded-full"></div><span class="text-xs font-medium text-yellow-700 dark:text-yellow-300">Mode Lokal</span></div>`;
+
             const hasPin = auth.hasPin();
             const profile = appState.profile || { name: 'Pengguna Frugal', currency: 'IDR', theme: 'light' };
             return `
@@ -2106,10 +2216,7 @@
                             <h1 class="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent dark:from-indigo-400 dark:to-purple-400">Pengaturan</h1>
                             <p class="text-gray-600 text-sm sm:text-base mt-1 dark:text-gray-400">Kelola preferensi dan keamanan akun Anda</p>
                         </div>
-                        <div class="flex items-center space-x-2 bg-white/60 backdrop-blur-sm px-4 py-2 rounded-2xl border border-white/40">
-                            <div class="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-                            <span class="text-sm text-gray-600">Tersinkronisasi</span>
-                        </div>
+                        ${syncStatusIndicator}
                     </div>
                     
                     <!-- Profile Settings -->
@@ -3740,9 +3847,92 @@
                 description: document.getElementById('receivable-description').value.trim()
             };
             
-            saveReceivable(receivable);
+            createReceivable(receivable); // Changed from saveReceivable to match convention
             hideAddReceivableForm();
             render();
+        }
+
+        async function createReceivable(receivable) { // Renamed from saveReceivable
+            const transaction = appState.transactions.find(t => t.id === transactionId);
+            if (!transaction) {
+                showSyncStatus('error', 'Transaksi tidak ditemukan.');
+                return;
+            }
+
+            const modal = document.createElement('div');
+            modal.id = 'edit-transaction-modal';
+            modal.className = 'fixed inset-0 bg-black/60 backdrop-blur-lg flex items-center justify-center p-4 z-50 animate-fadeIn';
+            
+            const isExpense = transaction.type === 'expense';
+
+            const expenseCategories = `
+                <option value="Makanan" ${transaction.category === 'Makanan' ? 'selected' : ''}>🍽️ Makanan & Minuman</option>
+                <option value="Transportasi" ${transaction.category === 'Transportasi' ? 'selected' : ''}>🚗 Transportasi</option>
+                <option value="Belanja" ${transaction.category === 'Belanja' ? 'selected' : ''}>🛍️ Belanja</option>
+                <option value="Tagihan" ${transaction.category === 'Tagihan' ? 'selected' : ''}>📄 Tagihan & Utilitas</option>
+                <option value="Hiburan" ${transaction.category === 'Hiburan' ? 'selected' : ''}>🎬 Hiburan</option>
+                <option value="Kesehatan" ${transaction.category === 'Kesehatan' ? 'selected' : ''}>🏥 Kesehatan</option>
+                <option value="Pendidikan" ${transaction.category === 'Pendidikan' ? 'selected' : ''}>📚 Pendidikan</option>
+                <option value="Lainnya" ${transaction.category === 'Lainnya' ? 'selected' : ''}>📦 Lainnya</option>
+            `;
+
+            const incomeCategories = `
+                <option value="Gaji" ${transaction.category === 'Gaji' ? 'selected' : ''}>💰 Gaji & Upah</option>
+                <option value="Freelance" ${transaction.category === 'Freelance' ? 'selected' : ''}>💻 Freelance</option>
+                <option value="Investasi" ${transaction.category === 'Investasi' ? 'selected' : ''}>📈 Investasi & Dividen</option>
+                <option value="Hadiah" ${transaction.category === 'Hadiah' ? 'selected' : ''}>🎁 Hadiah & Bonus</option>
+                <option value="Bisnis" ${transaction.category === 'Bisnis' ? 'selected' : ''}>🏪 Bisnis Sampingan</option>
+                <option value="Lainnya" ${transaction.category === 'Lainnya' ? 'selected' : ''}>📦 Lainnya</option>
+            `;
+
+            modal.innerHTML = `
+                <div class="bg-white/95 dark:bg-slate-800/95 backdrop-blur-3xl rounded-3xl p-8 w-full max-w-lg shadow-2xl border border-white/40 dark:border-slate-700 animate-slideUp max-h-[90vh] overflow-y-auto">
+                    <div class="flex justify-between items-center mb-6">
+                        <h3 class="text-xl font-bold text-gray-800 dark:text-white">Edit Transaksi</h3>
+                        <button onclick="document.getElementById('edit-transaction-modal').remove()" class="text-gray-500 hover:text-gray-700 p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-slate-700 transition-all duration-300">
+                            <i class="fas fa-times text-xl"></i>
+                        </button>
+                    </div>
+                    <form onsubmit="handleUpdateTransaction(event, ${transaction.id})" class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Jenis Transaksi</label>
+                            <select id="edit-transaction-type" class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl dark:bg-slate-700 dark:border-slate-600 dark:text-white" disabled>
+                                <option value="expense" ${isExpense ? 'selected' : ''}>Pengeluaran</option>
+                                <option value="income" ${!isExpense ? 'selected' : ''}>Pemasukan</option>
+                            </select>
+                        </div>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Jumlah (Rp)</label>
+                                <input type="number" step="1000" id="edit-transaction-amount" value="${transaction.amount * 1000}" class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl dark:bg-slate-700 dark:border-slate-600 dark:text-white" required />
+                            </div>
+                            <div>
+                                <label class="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Tanggal</label>
+                                <input type="date" id="edit-transaction-date" value="${transaction.date}" class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl dark:bg-slate-700 dark:border-slate-600 dark:text-white" required />
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Kategori</p>
+                            <select id="edit-transaction-category" class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl dark:bg-slate-700 dark:border-slate-600 dark:text-white" required>
+                                ${isExpense ? expenseCategories : incomeCategories}
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Deskripsi</p>
+                            <input type="text" id="edit-transaction-description" value="${transaction.description}" class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl dark:bg-slate-700 dark:border-slate-600 dark:text-white" required />
+                        </div>
+                        <div class="flex space-x-3 pt-4">
+                            <button type="submit" class="flex-1 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white py-3 rounded-xl font-semibold shadow-lg">
+                                <i class="fas fa-save mr-2"></i>Simpan Perubahan
+                            </button>
+                            <button type="button" onclick="document.getElementById('edit-transaction-modal').remove()" class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700 py-3 rounded-xl font-semibold dark:bg-slate-600 dark:hover:bg-slate-500 dark:text-gray-200">
+                                <i class="fas fa-times mr-2"></i>Batal
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            `;
+            document.body.appendChild(modal);
         }
 
         function showEditTransactionModal(transactionId) {
@@ -3891,7 +4081,7 @@
                 deadline: document.getElementById('goal-deadline').value
             };
             
-            saveGoal(goal);
+            createGoal(goal);
             hideAddGoalForm();
             render();
         }
@@ -3908,46 +4098,56 @@
                 return;
             }
 
-            const goal = appState.goals.find(g => g.id === goalId);
-            if (goal) {
-                // The amount is stored divided by 1000, so we do the same here
-                goal.currentAmount += amountToAdd / 1000;
-                
-                // Save updated goals to localStorage
-                if (appState.user) {
-                    const userId = appState.user.id;
-                    localStorage.setItem(`goals_${userId}`, JSON.stringify(appState.goals));
-                }
+            const goalIndex = appState.goals.findIndex(g => g.id === goalId);
+            if (goalIndex === -1) return;
 
-                // Create a corresponding transaction for this saving action
-                const transaction = {
-                    type: 'expense', // Saving is considered an 'expense' from the main balance
-                    amount: amountToAdd / 1000,
-                    category: 'Tabungan',
-                    description: `Menabung untuk: ${goal.title}`,
-                    date: new Date().toISOString().split('T')[0]
-                };
-                saveTransaction(transaction); // This will also re-render the app
+            const goal = appState.goals[goalIndex];
+            const newCurrentAmount = goal.currentAmount + (amountToAdd / 1000);
 
-                // Re-render to show updated goal progress immediately
-                render();
-                showSyncStatus('success', `Rp ${amountToAdd.toLocaleString('id-ID')} ditambahkan ke target!`);
-            }
+            // Create a corresponding transaction for this saving action
+            const transaction = {
+                type: 'expense', // Saving is considered an 'expense' from the main balance
+                amount: amountToAdd / 1000,
+                category: 'Tabungan',
+                description: `Menabung untuk: ${goal.title}`,
+                date: new Date().toISOString().split('T')[0]
+            };
+            
+            // Update goal and save transaction
+            updateGoal(goalId, { current_amount: newCurrentAmount });
+            saveTransaction(transaction);
+
+            // The render() call inside saveTransaction will handle the UI update.
+            showSyncStatus('success', `Rp ${amountToAdd.toLocaleString('id-ID')} ditambahkan ke target!`);
         }
 
-        function handleDeleteGoal(goalId) {
+        async function deleteGoal(goalId) {
             showConfirmModal({
                 title: 'Hapus Target?',
                 message: 'Apakah Anda yakin ingin menghapus target ini? Tindakan ini tidak dapat dibatalkan.',
                 confirmText: 'Ya, Hapus',
                 isDestructive: true,
-                onConfirm: () => {
-                    if (appState.user) {
-                        const userId = appState.user.id;
-                        appState.goals = appState.goals.filter(g => g.id !== goalId);
-                        localStorage.setItem(`goals_${userId}`, JSON.stringify(appState.goals));
-                        render();
-                        showSyncStatus('success', 'Target berhasil dihapus.');
+                onConfirm: async () => {
+                    if (!appState.user) return;
+                    const userId = appState.user.id;
+                    const originalGoals = [...appState.goals];
+                    appState.goals = appState.goals.filter(g => g.id !== goalId);
+                    render(); // Optimistic UI update
+
+                    localStorage.setItem(`goals_${userId}`, JSON.stringify(appState.goals));
+
+                    if (useSupabase) {
+                        const { error } = await db.deleteGoal(goalId);
+                        if (error) {
+                            console.error('❌ Error deleting goal:', error);
+                            showSyncStatus('error', 'Gagal menghapus. Data dikembalikan.');
+                            appState.goals = originalGoals; // Rollback
+                            render();
+                        } else {
+                            showSyncStatus('success', 'Target dihapus & disinkronisasi.');
+                        }
+                    } else {
+                        showSyncStatus('success', 'Target berhasil dihapus (lokal).');
                     }
                 }
             });
@@ -4037,38 +4237,49 @@
             event.preventDefault();
 
             const goalIndex = appState.goals.findIndex(g => g.id === goalId);
-            if (goalIndex === -1) {
-                showSyncStatus('error', 'Error: Target tidak ditemukan.');
-                return;
-            }
+            if (goalIndex === -1) return;
 
             // Get updated values from the form
-            const updatedTitle = document.getElementById('edit-goal-title').value;
-            const updatedTargetAmount = parseFloat(document.getElementById('edit-goal-target').value) / 1000;
-            const updatedCurrentAmount = parseFloat(document.getElementById('edit-goal-current').value) / 1000;
-            const updatedDeadline = document.getElementById('edit-goal-deadline').value;
-
-            // Update the goal in the appState
-            appState.goals[goalIndex] = {
-                ...appState.goals[goalIndex],
-                title: updatedTitle,
-                targetAmount: updatedTargetAmount,
-                currentAmount: updatedCurrentAmount,
-                deadline: updatedDeadline
+            const updates = {
+                title: document.getElementById('edit-goal-title').value,
+                target_amount: parseFloat(document.getElementById('edit-goal-target').value) / 1000,
+                current_amount: parseFloat(document.getElementById('edit-goal-current').value) / 1000,
+                deadline: document.getElementById('edit-goal-deadline').value
             };
 
-            // Save to localStorage
-            if (appState.user) {
-                const userId = appState.user.id;
-                localStorage.setItem(`goals_${userId}`, JSON.stringify(appState.goals));
-            }
+            updateGoal(goalId, updates);
 
             // Close the modal
             document.getElementById('edit-goal-modal').remove();
-
-            // Re-render the app and show a success message
             render();
-            showSyncStatus('success', 'Target berhasil diperbarui.');
+        }
+
+        async function updateGoal(goalId, updates) {
+            if (!appState.user) return;
+
+            const userId = appState.user.id;
+            const goalIndex = appState.goals.findIndex(g => g.id === goalId);
+            if (goalIndex === -1) return;
+
+            const originalGoal = { ...appState.goals[goalIndex] };
+            appState.goals[goalIndex] = { ...appState.goals[goalIndex], ...updates, updated_at: new Date().toISOString() };
+
+            try {
+                localStorage.setItem(`goals_${userId}`, JSON.stringify(appState.goals));
+
+                if (useSupabase) {
+                    const { data, error } = await db.updateGoal(goalId, updates);
+                    if (error) {
+                        showSyncStatus('error', 'Gagal sync update target');
+                        console.error('Supabase goal update error:', error);
+                    }
+                }
+                showSyncStatus('success', 'Target berhasil diperbarui.');
+            } catch (error) {
+                console.error('Error updating goal:', error);
+                showSyncStatus('error', 'Gagal memperbarui target');
+                appState.goals[goalIndex] = originalGoal; // Rollback
+            }
         }
 
         function clearAllData() {
