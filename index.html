@@ -123,6 +123,7 @@
         // Simple state management
         let appState = {
             user: null,
+            isLoading: true,
             profile: { name: 'Pengguna Frugal', currency: 'IDR', theme: 'light' },
             currentPage: 'overview',
             sidebarOpen: false,
@@ -342,12 +343,12 @@
                 appState.budgets = [];
                 appState.goals = [];
             },
-            init: () => {
+            init: async () => {
                 const stored = localStorage.getItem('frugal_user');
                 if (stored) {
                     appState.user = JSON.parse(stored);
                     loadProfileSettings(appState.user.id);
-                    loadUserData();
+                    await loadUserData();
                 }
             },
             setPin: (newPin) => {
@@ -704,6 +705,38 @@
             goal.id = Date.now();
             appState.goals.push(goal);
             localStorage.setItem(`goals_${userId}`, JSON.stringify(appState.goals));
+        }
+
+        function renderLoadingScreen() {
+            return `
+                <div class="min-h-screen bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-800 flex flex-col items-center justify-center text-white p-4 relative overflow-hidden dark:from-slate-900 dark:via-black dark:to-slate-800">
+                    <style>
+                        @keyframes spin-and-grow {
+                            0% { transform: rotate(0deg) scale(0.8); }
+                            50% { transform: rotate(180deg) scale(1.1); }
+                            100% { transform: rotate(360deg) scale(0.8); }
+                        }
+                        .loader-icon {
+                            animation: spin-and-grow 2s ease-in-out infinite;
+                        }
+                        @keyframes text-glow {
+                            0%, 100% { text-shadow: 0 0 5px rgba(255, 255, 255, 0.4), 0 0 10px rgba(255, 255, 255, 0.3); }
+                            50% { text-shadow: 0 0 15px rgba(255, 255, 255, 0.6), 0 0 25px rgba(255, 255, 255, 0.5); }
+                        }
+                        .glowing-text {
+                            animation: text-glow 3s ease-in-out infinite;
+                        }
+                    </style>
+                    <div class="text-center fade-in">
+                        <div class="inline-flex items-center justify-center w-24 h-24 bg-gradient-to-br from-blue-400 to-purple-500 rounded-3xl mb-8 shadow-2xl loader-icon">
+                            <i class="fas fa-piggy-bank text-4xl text-white"></i>
+                        </div>
+                        <h1 class="text-5xl font-bold text-white mb-4 tracking-tight glowing-text">Frugal Living</h1>
+                        <p class="text-white/80 text-xl">Memuat data keuangan Anda...</p>
+                        <div class="w-24 h-1 bg-gradient-to-r from-blue-400 to-purple-500 rounded-full mx-auto mt-6 animate-pulse"></div>
+                    </div>
+                </div>
+            `;
         }
 
         // Login Page
@@ -4901,6 +4934,11 @@
         function render() {
             const app = document.getElementById('app');
             
+            if (appState.isLoading) {
+                app.innerHTML = renderLoadingScreen();
+                return;
+            }
+
             if (!appState.user) {
                 app.innerHTML = renderLoginPage();
             } else {
@@ -5016,9 +5054,21 @@
 
         // Initialize app
         initializeDefaultPins();
-        auth.init();
-        render();
         
+        async function startApp() {
+            render(); // Tampilkan loading screen pertama kali
+            
+            await auth.init(); // Muat data pengguna dan data lainnya
+            
+            // Tambahkan sedikit jeda agar animasi terlihat lebih mulus
+            setTimeout(() => {
+                appState.isLoading = false;
+                render(); // Render aplikasi utama
+            }, 1500); // Jeda 1.5 detik
+        }
+
+        startApp();
+
         // Log debug info on startup
         console.log('🚀 Frugal Living App Initialized');
         console.log('🔧 Debug tools available: window.debugFrugal');
