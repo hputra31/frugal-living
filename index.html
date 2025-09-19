@@ -129,7 +129,8 @@
             showQuickAdd: false,
             transactions: [],
             budgets: [],
-            goals: []
+            goals: [],
+            receivables: []
         };
 
         // Database functions
@@ -235,6 +236,41 @@
                     .from('goals')
                     .insert([goalData])
                     .select();
+                return { data, error };
+            },
+            
+            // Receivable functions
+            async getReceivables(userId) {
+                const { data, error } = await supabase
+                    .from('receivables')
+                    .select('*')
+                    .eq('user_id', userId)
+                    .order('due_date', { ascending: true });
+                return { data, error };
+            },
+            
+            async createReceivable(receivableData) {
+                const { data, error } = await supabase
+                    .from('receivables')
+                    .insert([receivableData])
+                    .select();
+                return { data, error };
+            },
+
+            async updateReceivable(receivableId, updates) {
+                const { data, error } = await supabase
+                    .from('receivables')
+                    .update(updates)
+                    .eq('id', receivableId)
+                    .select();
+                return { data, error };
+            },
+
+            async deleteReceivable(receivableId) {
+                const { data, error } = await supabase
+                    .from('receivables')
+                    .delete()
+                    .eq('id', receivableId);
                 return { data, error };
             }
         };
@@ -369,6 +405,11 @@
                     if (goalError) throw goalError;
                     appState.goals = goals || [];
                     
+                    // Load receivables
+                    const { data: receivables, error: receivableError } = await db.getReceivables(userId);
+                    if (receivableError) throw receivableError;
+                    appState.receivables = receivables || [];
+                    
                     console.log('✅ Data loaded from Supabase:', {
                         transactions: appState.transactions.length,
                         budgets: appState.budgets.length,
@@ -379,6 +420,7 @@
                     localStorage.setItem(`transactions_${userId}`, JSON.stringify(appState.transactions));
                     localStorage.setItem(`budgets_${userId}`, JSON.stringify(appState.budgets));
                     localStorage.setItem(`goals_${userId}`, JSON.stringify(appState.goals));
+                    localStorage.setItem(`receivables_${userId}`, JSON.stringify(appState.receivables));
                     
                 } catch (error) {
                     console.error('❌ Error loading from Supabase, falling back to localStorage:', error);
@@ -393,10 +435,12 @@
             appState.transactions = JSON.parse(localStorage.getItem(`transactions_${userId}`) || '[]');
             appState.budgets = JSON.parse(localStorage.getItem(`budgets_${userId}`) || '[]');
             appState.goals = JSON.parse(localStorage.getItem(`goals_${userId}`) || '[]');
+            appState.receivables = JSON.parse(localStorage.getItem(`receivables_${userId}`) || '[]');
             console.log('📱 Data loaded from localStorage:', {
                 transactions: appState.transactions.length,
                 budgets: appState.budgets.length,
-                goals: appState.goals.length
+                goals: appState.goals.length,
+                receivables: appState.receivables.length
             });
         }
 
@@ -518,6 +562,84 @@
             appState.budgets = appState.budgets.filter(b => b.id !== budgetId);
             localStorage.setItem(`budgets_${userId}`, JSON.stringify(appState.budgets));
             showSyncStatus('success', 'Anggaran berhasil dihapus.');
+            render();
+        }
+
+        async function saveReceivable(receivable) {
+            if (!appState.user) return;
+            
+            const userId = appState.user.id;
+            receivable.id = Date.now();
+            receivable.user_id = userId;
+            receivable.status = 'unpaid';
+            receivable.created_at = new Date().toISOString();
+            
+            appState.receivables.push(receivable);
+            
+            try {
+                localStorage.setItem(`receivables_${userId}`, JSON.stringify(appState.receivables));
+                
+                if (useSupabase) {
+                    const { data, error } = await db.createReceivable(receivable);
+                    if (error) {
+                        showSyncStatus('error', 'Gagal sync piutang ke cloud');
+                        console.error('Supabase receivable create error:', error);
+                    } else {
+                        showSyncStatus('success', 'Piutang dicatat & disinkronisasi');
+                    }
+                } else {
+                    showSyncStatus('success', 'Piutang berhasil dicatat (lokal)');
+                }
+            } catch (error) {
+                console.error('Error creating receivable:', error);
+                showSyncStatus('error', 'Gagal mencatat piutang');
+                appState.receivables.pop(); // Rollback
+            }
+        }
+
+        async function updateReceivableStatus(receivableId, status) {
+            if (!appState.user) return;
+
+            const userId = appState.user.id;
+            const receivableIndex = appState.receivables.findIndex(r => r.id === receivableId);
+            if (receivableIndex === -1) return;
+
+            const originalReceivable = { ...appState.receivables[receivableIndex] };
+            appState.receivables[receivableIndex].status = status;
+            appState.receivables[receivableIndex].updated_at = new Date().toISOString();
+
+            try {
+                localStorage.setItem(`receivables_${userId}`, JSON.stringify(appState.receivables));
+
+                if (useSupabase) {
+                    const { data, error } = await db.updateReceivable(receivableId, { status });
+                    if (error) {
+                        showSyncStatus('error', 'Gagal sync update status piutang');
+                        console.error('Supabase receivable update error:', error);
+                    } else {
+                        showSyncStatus('success', 'Status piutang diperbarui & disinkronisasi');
+                    }
+                } else {
+                    showSyncStatus('success', 'Status piutang berhasil diperbarui (lokal)');
+                }
+            } catch (error) {
+                console.error('Error updating receivable status:', error);
+                showSyncStatus('error', 'Gagal memperbarui status piutang');
+                appState.receivables[receivableIndex] = originalReceivable; // Rollback
+            } finally {
+                // Re-render the UI after the operation is complete
+                render();
+            }
+        }
+
+        async function deleteReceivable(receivableId) {
+            if (!appState.user) return;
+            if (!confirm('Apakah Anda yakin ingin menghapus catatan piutang ini?')) return;
+
+            const userId = appState.user.id;
+            appState.receivables = appState.receivables.filter(r => r.id !== receivableId);
+            localStorage.setItem(`receivables_${userId}`, JSON.stringify(appState.receivables));
+            showSyncStatus('success', 'Piutang berhasil dihapus.');
             render();
         }
 
@@ -764,6 +886,7 @@
                 { id: 'overview', label: 'Ringkasan', icon: 'fas fa-chart-line' },
                 { id: 'transactions', label: 'Transaksi', icon: 'fas fa-receipt' },
                 { id: 'budgets', label: 'Anggaran', icon: 'fas fa-chart-pie' },
+                { id: 'receivables', label: 'Piutang', icon: 'fas fa-hand-holding-usd' },
                 { id: 'reports', label: 'Laporan', icon: 'fas fa-chart-bar' },
                 { id: 'goals', label: 'Target', icon: 'fas fa-bullseye' },
                 { id: 'settings', label: 'Pengaturan', icon: 'fas fa-cog' }
@@ -802,6 +925,8 @@
                     return renderTransactionsPage();
                 case 'budgets':
                     return renderBudgetsPage();
+                case 'receivables':
+                    return renderReceivablesPage();
                 case 'reports':
                     return renderReportsPage();
                 case 'goals':
@@ -1268,6 +1393,117 @@
                             >
                                 <i class="fas fa-plus mr-2"></i>Buat Anggaran Pertama
                             </button>
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+        }
+
+        function renderReceivablesPage() {
+            const totalUnpaid = appState.receivables
+                .filter(r => r.status === 'unpaid')
+                .reduce((sum, r) => sum + r.amount, 0);
+            const totalPaid = appState.receivables
+                .filter(r => r.status === 'paid')
+                .reduce((sum, r) => sum + r.amount, 0);
+
+            return `
+                <div class="space-y-6 fade-in">
+                    <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+                        <div>
+                            <h1 class="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent dark:from-green-400 dark:to-emerald-400">Catatan Piutang</h1>
+                            <p class="text-gray-600 text-sm sm:text-base mt-1 dark:text-gray-400">Kelola dan lacak semua piutang Anda</p>
+                        </div>
+                        <button onclick="showAddReceivableForm()" class="w-full sm:w-auto bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white px-4 sm:px-6 py-3 sm:py-2 rounded-2xl font-semibold shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300 flex items-center justify-center">
+                            <i class="fas fa-plus mr-2"></i>
+                            <span class="text-sm sm:text-base">Tambah Piutang</span>
+                        </button>
+                    </div>
+
+                    <!-- Stats Cards -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div class="bg-white/70 dark:bg-slate-800/70 backdrop-blur-sm rounded-3xl p-6 shadow-xl border border-white/20 dark:border-slate-700">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <p class="text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">Total Piutang (Belum Lunas)</p>
+                                    <p class="text-2xl font-bold text-orange-600 dark:text-orange-400">Rp ${(totalUnpaid * 1000).toLocaleString('id-ID')}</p>
+                                </div>
+                                <div class="bg-gradient-to-br from-orange-400 to-red-500 p-4 rounded-2xl shadow-lg">
+                                    <i class="fas fa-hourglass-half text-white text-xl"></i>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bg-white/70 dark:bg-slate-800/70 backdrop-blur-sm rounded-3xl p-6 shadow-xl border border-white/20 dark:border-slate-700">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <p class="text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">Total Sudah Dibayar</p>
+                                    <p class="text-2xl font-bold text-green-600 dark:text-green-400">Rp ${(totalPaid * 1000).toLocaleString('id-ID')}</p>
+                                </div>
+                                <div class="bg-gradient-to-br from-green-400 to-emerald-500 p-4 rounded-2xl shadow-lg">
+                                    <i class="fas fa-check-circle text-white text-xl"></i>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Add Receivable Form -->
+                    <div id="receivable-form" class="hidden bg-white/70 dark:bg-slate-800/70 backdrop-blur-sm rounded-3xl p-6 sm:p-8 shadow-xl border border-white/20 dark:border-slate-700">
+                        <h3 class="text-lg sm:text-xl font-bold text-gray-800 dark:text-white mb-4 sm:mb-6">Tambah Catatan Piutang Baru</h3>
+                        <form onsubmit="handleAddReceivable(event)" class="space-y-4">
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <input type="text" id="receivable-debtor" placeholder="Nama Peminjam" class="w-full px-4 py-3 border-2 border-gray-200 rounded-2xl focus:ring-4 focus:ring-green-500/20 focus:border-green-500 font-medium bg-white/80 dark:bg-slate-700 dark:border-slate-600 dark:text-white" required />
+                                <input type="number" step="1000" id="receivable-amount" placeholder="Jumlah Piutang (Rp)" class="w-full px-4 py-3 border-2 border-gray-200 rounded-2xl focus:ring-4 focus:ring-green-500/20 focus:border-green-500 font-medium bg-white/80 dark:bg-slate-700 dark:border-slate-600 dark:text-white" required />
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Tanggal Jatuh Tempo</label>
+                                <input type="date" id="receivable-due-date" class="w-full px-4 py-3 border-2 border-gray-200 rounded-2xl focus:ring-4 focus:ring-green-500/20 focus:border-green-500 font-medium bg-white/80 dark:bg-slate-700 dark:border-slate-600 dark:text-white" required />
+                            </div>
+                            <div>
+                                <textarea id="receivable-description" placeholder="Deskripsi (opsional)" rows="2" class="w-full px-4 py-3 border-2 border-gray-200 rounded-2xl focus:ring-4 focus:ring-green-500/20 focus:border-green-500 font-medium bg-white/80 dark:bg-slate-700 dark:border-slate-600 dark:text-white"></textarea>
+                            </div>
+                            <div class="flex space-x-2">
+                                <button type="submit" class="flex-1 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white px-6 py-3 rounded-xl font-semibold shadow-lg"><i class="fas fa-check mr-2"></i>Simpan</button>
+                                <button type="button" onclick="hideAddReceivableForm()" class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700 px-6 py-3 rounded-xl font-semibold dark:bg-slate-600 dark:hover:bg-slate-500 dark:text-gray-200"><i class="fas fa-times mr-2"></i>Batal</button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <!-- Receivables List -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        ${appState.receivables.sort((a, b) => new Date(a.due_date) - new Date(b.due_date)).map(receivable => {
+                            const isPaid = receivable.status === 'paid';
+                            const dueDate = new Date(receivable.due_date);
+                            const today = new Date();
+                            today.setHours(0,0,0,0);
+                            const isOverdue = !isPaid && dueDate < today;
+                            const daysDiff = Math.ceil((dueDate - today) / (1000 * 60 * 60 * 24));
+
+                            return `
+                                <div class="bg-white/70 dark:bg-slate-800/70 backdrop-blur-sm rounded-3xl p-6 shadow-xl border border-white/20 dark:border-slate-700 flex flex-col ${isPaid ? 'opacity-60' : ''}">
+                                    <div class="flex justify-between items-start mb-3">
+                                        <h3 class="text-lg font-semibold text-gray-800 dark:text-white">${receivable.debtor_name}</h3>
+                                        <span class="text-xs px-2 py-1 rounded-full font-medium ${isPaid ? 'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-300' : isOverdue ? 'bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-300' : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-500/20 dark:text-yellow-300'}">${isPaid ? 'Lunas' : isOverdue ? 'Terlewat' : `${daysDiff} hari lagi`}</span>
+                                    </div>
+                                    <div class="flex-grow space-y-3">
+                                        <p class="text-2xl font-bold text-gray-800 dark:text-gray-100">Rp ${(receivable.amount * 1000).toLocaleString('id-ID')}</p>
+                                        <p class="text-sm text-gray-500 dark:text-gray-400">Jatuh Tempo: ${dueDate.toLocaleDateString('id-ID')}</p>
+                                        ${receivable.description ? `<p class="text-xs text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-slate-700/50 p-2 rounded-lg">${receivable.description}</p>` : ''}
+                                    </div>
+                                    <div class="mt-4 pt-4 border-t border-gray-200/80 dark:border-slate-700/80 flex items-center gap-2">
+                                        ${!isPaid ? `<button onclick="handleMarkAsPaid(${receivable.id})" class="flex-1 bg-green-100 hover:bg-green-200 text-green-700 font-semibold px-3 py-2 rounded-xl transition-all duration-300 text-sm"><i class="fas fa-check mr-1"></i> Tandai Lunas</button>` : ''}
+                                        <button onclick="handleDeleteReceivable(${receivable.id})" class="flex-1 bg-red-100 hover:bg-red-200 text-red-700 font-semibold px-3 py-2 rounded-xl transition-all duration-300 text-sm"><i class="fas fa-trash mr-1"></i> Hapus</button>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+
+                    ${appState.receivables.length === 0 ? `
+                        <div class="bg-white/70 dark:bg-slate-800/70 backdrop-blur-sm rounded-3xl p-8 sm:p-12 shadow-xl border border-white/20 dark:border-slate-700 text-center">
+                            <div class="w-20 h-20 bg-gradient-to-br from-green-100 to-emerald-100 rounded-3xl flex items-center justify-center mx-auto mb-6 dark:bg-gradient-to-br dark:from-green-900/50 dark:to-emerald-900/50"><i class="fas fa-hand-holding-usd text-3xl text-green-400 dark:text-green-300"></i></div>
+                            <h4 class="text-lg sm:text-xl font-semibold text-gray-700 mb-2 dark:text-gray-200">Belum Ada Catatan Piutang</h4>
+                            <p class="text-gray-500 mb-6 text-sm sm:text-base dark:text-gray-400">Catat piutang agar tidak lupa menagih</p>
+                            <button onclick="showAddReceivableForm()" class="w-full sm:w-auto bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white px-6 sm:px-8 py-3 sm:py-2 rounded-2xl font-semibold shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300 text-sm sm:text-base"><i class="fas fa-plus mr-2"></i>Catat Piutang Pertama</button>
                         </div>
                     ` : ''}
                 </div>
@@ -2029,26 +2265,42 @@
                                                 <div>&nbsp;&nbsp;updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()</div>
                                                 <div>);</div>
                                                 <br>
-                                                <div class="text-purple-400">-- 5️⃣ Create Indexes for Better Performance</div>
+                                                <div class="text-blue-400">-- 5️⃣ Receivables Table (Piutang)</div>
+                                                <div>CREATE TABLE IF NOT EXISTS receivables (</div>
+                                                <div>&nbsp;&nbsp;id BIGINT PRIMARY KEY,</div>
+                                                <div>&nbsp;&nbsp;user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,</div>
+                                                <div>&nbsp;&nbsp;debtor_name TEXT NOT NULL,</div>
+                                                <div>&nbsp;&nbsp;amount DECIMAL(15,2) NOT NULL,</div>
+                                                <div>&nbsp;&nbsp;due_date DATE NOT NULL,</div>
+                                                <div>&nbsp;&nbsp;description TEXT,</div>
+                                                <div>&nbsp;&nbsp;status TEXT NOT NULL DEFAULT 'unpaid' CHECK (status IN ('unpaid', 'paid')),</div>
+                                                <div>&nbsp;&nbsp;created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),</div>
+                                                <div>&nbsp;&nbsp;updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()</div>
+                                                <div>);</div>
+                                                <br>
+                                                <div class="text-purple-400">-- 6️⃣ Create Indexes for Better Performance</div>
                                                 <div>CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON transactions(user_id);</div>
                                                 <div>CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date DESC);</div>
                                                 <div>CREATE INDEX IF NOT EXISTS idx_budgets_user_id ON budgets(user_id);</div>
                                                 <div>CREATE INDEX IF NOT EXISTS idx_goals_user_id ON goals(user_id);</div>
+                                                <div>CREATE INDEX IF NOT EXISTS idx_receivables_user_id ON receivables(user_id);</div>
                                                 <br>
-                                                <div class="text-purple-400">-- 6️⃣ Enable Row Level Security (RLS)</div>
+                                                <div class="text-purple-400">-- 7️⃣ Enable Row Level Security (RLS)</div>
                                                 <div>ALTER TABLE users ENABLE ROW LEVEL SECURITY;</div>
                                                 <div>ALTER TABLE transactions ENABLE ROW LEVEL SECURITY;</div>
                                                 <div>ALTER TABLE budgets ENABLE ROW LEVEL SECURITY;</div>
                                                 <div>ALTER TABLE goals ENABLE ROW LEVEL SECURITY;</div>
+                                                <div>ALTER TABLE receivables ENABLE ROW LEVEL SECURITY;</div>
                                                 <br>
-                                                <div class="text-orange-400">-- 7️⃣ Create RLS Policies (Optional - for enhanced security)</div>
+                                                <div class="text-orange-400">-- 8️⃣ Create RLS Policies (Optional - for enhanced security)</div>
                                                 <div>-- Users can only see their own data</div>
                                                 <div>CREATE POLICY "Users can view own data" ON users FOR ALL USING (true);</div>
                                                 <div>CREATE POLICY "Users can manage own transactions" ON transactions FOR ALL USING (true);</div>
                                                 <div>CREATE POLICY "Users can manage own budgets" ON budgets FOR ALL USING (true);</div>
                                                 <div>CREATE POLICY "Users can manage own goals" ON goals FOR ALL USING (true);</div>
+                                                <div>CREATE POLICY "Users can manage own receivables" ON receivables FOR ALL USING (true);</div>
                                                 <br>
-                                                <div class="text-green-400">-- 8️⃣ Insert Sample Users with PINs (Optional)</div>
+                                                <div class="text-green-400">-- 9️⃣ Insert Sample Users with PINs (Optional)</div>
                                                 <div>INSERT INTO users (id, email, name, pin, role) VALUES</div>
                                                 <div>&nbsp;&nbsp;('demo_frugal_com', 'demo@frugal.com', 'Demo User', '123456', 'user'),</div>
                                                 <div>&nbsp;&nbsp;('admin_frugal_com', 'admin@frugal.com', 'Admin User', '999999', 'admin'),</div>
@@ -3198,6 +3450,39 @@
             deleteBudget(budgetId);
         }
 
+        function showAddReceivableForm() {
+            document.getElementById('receivable-form').classList.remove('hidden');
+        }
+
+        function hideAddReceivableForm() {
+            document.getElementById('receivable-form').classList.add('hidden');
+        }
+
+        function handleAddReceivable(event) {
+            event.preventDefault();
+            
+            const receivable = {
+                debtor_name: document.getElementById('receivable-debtor').value.trim(),
+                amount: parseFloat(document.getElementById('receivable-amount').value) / 1000,
+                due_date: document.getElementById('receivable-due-date').value,
+                description: document.getElementById('receivable-description').value.trim()
+            };
+            
+            saveReceivable(receivable);
+            hideAddReceivableForm();
+            render();
+        }
+
+        async function handleMarkAsPaid(receivableId) {
+            if (confirm('Tandai piutang ini sebagai lunas?')) {
+                await updateReceivableStatus(receivableId, 'paid');
+            }
+        }
+
+        function handleDeleteReceivable(receivableId) {
+            deleteReceivable(receivableId);
+        }
+
         function handleAddGoal(event) {
             event.preventDefault();
             
@@ -4327,7 +4612,8 @@
             return {
                 transactions: storedTransactions ? JSON.parse(storedTransactions) : [],
                 budgets: storedBudgets ? JSON.parse(storedBudgets) : [],
-                goals: storedGoals ? JSON.parse(storedGoals) : []
+                goals: storedGoals ? JSON.parse(storedGoals) : [],
+                receivables: JSON.parse(localStorage.getItem(`receivables_${userId}`) || '[]')
             };
         }
 
@@ -4338,7 +4624,8 @@
                 appState: {
                     transactions: appState.transactions,
                     budgets: appState.budgets,
-                    goals: appState.goals
+                    goals: appState.goals,
+                    receivables: appState.receivables
                 },
                 localStorage: {}
             };
@@ -4412,7 +4699,8 @@
             const backup = {
                 transactions: [...appState.transactions],
                 budgets: [...appState.budgets],
-                goals: [...appState.goals]
+                goals: [...appState.goals],
+                receivables: [...appState.receivables]
             };
             
             // Reload from localStorage
@@ -4423,7 +4711,8 @@
             console.log('After:', {
                 transactions: appState.transactions,
                 budgets: appState.budgets,
-                goals: appState.goals
+                goals: appState.goals,
+                receivables: appState.receivables
             });
             
             // Re-render the page
@@ -4442,7 +4731,8 @@
                 user: appState.user,
                 transactions: appState.transactions,
                 budgets: appState.budgets,
-                goals: appState.goals
+                goals: appState.goals,
+                receivables: appState.receivables
             }),
             getStorageData: (userId) => {
                 const id = userId || (appState.user ? appState.user.id : null);
@@ -4450,7 +4740,8 @@
                 return {
                     transactions: JSON.parse(localStorage.getItem(`transactions_${id}`) || '[]'),
                     budgets: JSON.parse(localStorage.getItem(`budgets_${id}`) || '[]'),
-                    goals: JSON.parse(localStorage.getItem(`goals_${id}`) || '[]')
+                    goals: JSON.parse(localStorage.getItem(`goals_${id}`) || '[]'),
+                    receivables: JSON.parse(localStorage.getItem(`receivables_${id}`) || '[]')
                 };
             }
         };
@@ -4499,7 +4790,8 @@
             console.log('📊 Data loaded:', {
                 transactions: appState.transactions.length,
                 budgets: appState.budgets.length,
-                goals: appState.goals.length
+                goals: appState.goals.length,
+                receivables: appState.receivables.length
             });
         }
     </script>
