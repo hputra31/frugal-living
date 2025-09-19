@@ -485,14 +485,33 @@
             }
         }
 
-        function deleteTransaction(id) {
+        async function deleteTransaction(id) {
             if (!appState.user) return;
             
             if (confirm('Apakah Anda yakin ingin menghapus transaksi ini?')) {
                 const userId = appState.user.id;
+                const originalTransactions = [...appState.transactions];
+                
+                // Optimistic UI update: remove from state and re-render immediately
                 appState.transactions = appState.transactions.filter(t => t.id !== id);
-                localStorage.setItem(`transactions_${userId}`, JSON.stringify(appState.transactions));
-                render(); // Refresh tampilan setelah menghapus
+                render();
+
+                try {
+                    localStorage.setItem(`transactions_${userId}`, JSON.stringify(appState.transactions));
+                    
+                    if (useSupabase) {
+                        const { error } = await db.deleteTransaction(id);
+                        if (error) throw error; // If Supabase fails, trigger the catch block
+                        showSyncStatus('success', 'Transaksi dihapus & disinkronisasi.');
+                    } else {
+                        showSyncStatus('success', 'Transaksi berhasil dihapus (lokal).');
+                    }
+                } catch (error) {
+                    console.error('❌ Error deleting transaction:', error);
+                    showSyncStatus('error', 'Gagal menghapus. Data dikembalikan.');
+                    appState.transactions = originalTransactions; // Rollback on failure
+                    render(); // Re-render to show the rolled-back data
+                }
             }
         }
 
@@ -2224,6 +2243,7 @@
                                                 <div>&nbsp;&nbsp;id TEXT PRIMARY KEY,</div>
                                                 <div>&nbsp;&nbsp;email TEXT UNIQUE NOT NULL,</div>
                                                 <div>&nbsp;&nbsp;name TEXT,</div>
+                                                <div>&nbsp;&nbsp;pin TEXT, -- Kolom untuk menyimpan PIN (opsional, jika ingin disimpan di DB)</div>
                                                 <div>&nbsp;&nbsp;role TEXT DEFAULT 'user',</div>
                                                 <div>&nbsp;&nbsp;created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),</div>
                                                 <div>&nbsp;&nbsp;updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()</div>
