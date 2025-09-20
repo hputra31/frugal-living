@@ -179,8 +179,8 @@
                 const from = (page - 1) * perPage;
                 const to = from + perPage - 1;
                 const { data, error, count } = await supabase
-                    .from('users')
-                    .select('*', { count: 'exact' })
+                    .from('users_with_stats') // Query the new view instead of the table
+                    .select('*', { count: 'exact' }) // The view has all the columns we need
                     .order('email', { ascending: true })
                     .range(from, to);
                 return { data, error, count };
@@ -194,6 +194,26 @@
                 return { data, error };
             },
             
+            async getAllUsersWithStats() {
+                const { data, error } = await supabase
+                    .from('users_with_stats')
+                    .select('*')
+                    .order('created_at', { ascending: true });
+                return { data, error };
+            },
+
+            async getTransactionsFromLastMonths(months = 6) {
+                const date = new Date();
+                date.setMonth(date.getMonth() - months);
+                const fromDate = date.toISOString().split('T')[0];
+
+                const { data, error } = await supabase
+                    .from('transactions')
+                    .select('date, amount')
+                    .gte('date', fromDate);
+                return { data, error };
+            },
+
             // Transaction functions
             async getTransactions(userId) {
                 const { data, error } = await supabase
@@ -2819,8 +2839,6 @@
                                                 <div>&nbsp;&nbsp;email TEXT UNIQUE NOT NULL,</div>
                                                 <div>&nbsp;&nbsp;name TEXT,</div>
                                                 <div>&nbsp;&nbsp;pin TEXT, -- Kolom untuk menyimpan PIN (opsional, jika ingin disimpan di DB)</div>
-                                                <div>&nbsp;&nbsp;name TEXT,</div>                                                
-                                                <div>&nbsp;&nbsp;pin TEXT, -- Kolom ini akan menyimpan HASH dari PIN, bukan PIN asli.</div>
                                                 <div>&nbsp;&nbsp;role TEXT DEFAULT 'user',</div>
                                                 <div>&nbsp;&nbsp;created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),</div>
                                                 <div>&nbsp;&nbsp;updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()</div>
@@ -2919,10 +2937,6 @@
                                                 <div>&nbsp;&nbsp;('admin_frugal_com', 'admin@frugal.com', 'Admin User', '999999', 'admin'),</div>
                                                 <div>&nbsp;&nbsp;('user_example_com', 'user@example.com', 'Example User', '000000', 'user'),</div>
                                                 <div>&nbsp;&nbsp;('test_budget_com', 'test@budget.com', 'Test User', '000000', 'user')</div>
-                                                <div class="text-green-400">-- 9️⃣ Insert Sample Users with HASHED PINs (Optional)</div>
-                                                <div>INSERT INTO public.users (id, email, name, pin, role) VALUES</div>
-                                                <div>&nbsp;&nbsp;('demo_frugal_com', 'demo@frugal.com', 'Demo User', 'c1c224b03cd9bc7b6a86d77f5dace40191766c485cd55dc48caf9ac873335d6f', 'user'),</div>
-                                                <div>&nbsp;&nbsp;('admin_frugal_com', 'admin@frugal.com', 'Admin User', '1304a79c9c649961c3238353a387515885363c3743638203158671f932e01361', 'admin')</div>
                                                 <div>ON CONFLICT (id) DO NOTHING;</div>
                                                 <br>
                                                 <div class="text-green-400">-- ✅ Setup Complete! Your database is ready for Frugal Living</div>
@@ -3098,63 +3112,6 @@
                                 </div>
                             </div>
                         </div>
-                    </div>
-                    ` : ''}
-
-                    ${appState.user?.role === 'admin' ? `
-                    <!-- Dummy Data SQL Script (Admin Tool) -->
-                    <div class="bg-white/70 backdrop-blur-sm rounded-3xl p-6 sm:p-8 shadow-xl border border-white/20 dark:bg-slate-800/70 dark:border-slate-700">
-                        <div class="flex items-center mb-6">
-                            <div class="w-8 h-8 bg-gradient-to-br from-blue-400 to-green-500 rounded-2xl flex items-center justify-center mr-3 shadow-lg">
-                                <i class="fas fa-database text-white text-sm"></i>
-                            </div>
-                            <h3 class="text-lg sm:text-xl font-bold text-gray-800 dark:text-white">Input Data Dummy (SQL Editor)</h3>
-                        </div>
-                        <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">Jalankan skrip di bawah ini pada SQL Editor Supabase untuk mengisi data contoh untuk pengguna <code class="bg-gray-200 dark:bg-slate-700 px-1 rounded">demo@frugal.com</code>.</p>
-                        <div class="bg-gray-800 text-green-400 p-4 rounded-xl font-mono text-xs mt-2 overflow-x-auto">
-                            <div class="text-yellow-400">-- 🚀 FRUGAL LIVING DUMMY DATA SCRIPT</div>
-                            <div class="text-yellow-400">-- Jalankan skrip ini untuk mengisi data contoh.</div>
-                            <br>
-                            <div class="text-yellow-400">-- Pastikan pengguna demo dan admin ada</div>
-                            <div>INSERT INTO public.users (id, email, name, pin, role) VALUES</div>
-                            <div>('demo_frugal_com', 'demo@frugal.com', 'Demo User', 'c1c224b03cd9bc7b6a86d77f5dace40191766c485cd55dc48caf9ac873335d6f', 'user'),</div>
-                            <div>('admin_frugal_com', 'admin@frugal.com', 'Admin User', '1304a79c9c649961c3238353a387515885363c3743638203158671f932e01361', 'admin')</div>
-                            <div>ON CONFLICT (id) DO NOTHING;</div>
-                            <br>
-                            <div class="text-yellow-400">-- Hapus data dummy lama agar tidak duplikat</div>
-                            <div>DELETE FROM public.transactions WHERE user_id = 'demo_frugal_com';</div>
-                            <div>DELETE FROM public.budgets WHERE user_id = 'demo_frugal_com';</div>
-                            <div>DELETE FROM public.goals WHERE user_id = 'demo_frugal_com';</div>
-                            <div>DELETE FROM public.receivables WHERE user_id = 'demo_frugal_com';</div>
-                            <div>DELETE FROM public.debts WHERE user_id = 'demo_frugal_com';</div>
-                            <br>
-                            <div class="text-yellow-400">-- Masukkan Data Transaksi</div>
-                            <div>INSERT INTO public.transactions (id, user_id, type, amount, category, description, date) VALUES</div>
-                            <div>(1700000000001, 'demo_frugal_com', 'income', 5000.00, 'Gaji', 'Gaji Bulanan November', NOW() - interval '25 days'),</div>
-                            <div>(1700000000002, 'demo_frugal_com', 'expense', 25.00, 'Makanan', 'Makan siang di kantor', NOW() - interval '20 days'),</div>
-                            <div>(1700000000003, 'demo_frugal_com', 'expense', 18.50, 'Hiburan', 'Nonton bioskop', NOW() - interval '18 days');</div>
-                            <br>
-                            <div class="text-yellow-400">-- Masukkan Data Anggaran</div>
-                            <div>INSERT INTO public.budgets (id, user_id, category, amount, period, description) VALUES</div>
-                            <div>(1710000000001, 'demo_frugal_com', 'Makanan', 1500.00, 'monthly', 'Anggaran makan sebulan');</div>
-                            <br>
-                            <div class="text-yellow-400">-- Masukkan Data Target</div>
-                            <div>INSERT INTO public.goals (id, user_id, title, target_amount, current_amount, deadline) VALUES</div>
-                            <div>(1720000000001, 'demo_frugal_com', 'Liburan ke Bali', 5000.00, 1200.00, NOW() + interval '90 days');</div>
-                            <br>
-                            <div class="text-yellow-400">-- Masukkan Data Piutang</div>
-                            <div>INSERT INTO public.receivables (id, user_id, debtor_name, amount, due_date, status, description) VALUES</div>
-                            <div>(1730000000001, 'demo_frugal_com', 'Budi', 100.00, NOW() + interval '10 days', 'unpaid', 'Pinjam uang untuk makan');</div>
-                            <br>
-                            <div class="text-yellow-400">-- Masukkan Data Utang</div>
-                            <div>INSERT INTO public.debts (id, user_id, creditor_name, amount, due_date, status, description) VALUES</div>
-                            <div>(1740000000001, 'demo_frugal_com', 'Bank ABC', 500.00, NOW() + interval '15 days', 'unpaid', 'Cicilan bulanan');</div>
-                            <br>
-                            <div class="text-green-400">-- ✅ Dummy data inserted successfully!</div>
-                        </div>
-                        <button onclick="copyToClipboard(this.previousElementSibling.innerText)" class="mt-4 w-full sm:w-auto bg-gradient-to-r from-blue-500 to-indigo-600 text-white px-6 py-2 rounded-xl font-semibold shadow-lg">
-                            <i class="fas fa-copy mr-2"></i>Salin Skrip SQL
-                        </button>
                     </div>
                     ` : ''}
 
@@ -3590,20 +3547,35 @@
 
                 // Fallback to localStorage if Supabase fails or is not used
                 if (errorState || !useSupabase) {
-                    let localUsers = [];
+                    const localUsers = [];
                     for (let i = 0; i < localStorage.length; i++) {
                         const key = localStorage.key(i);
                         if (key && key.startsWith('pin_')) {
                             const userId = key.replace('pin_', '');
                             const emailParts = userId.split('_');
                             if (emailParts.length >= 3) {
-                                const email = emailParts[0] + '@' + emailParts.slice(1, -1).join('.') + '.' + emailParts[emailParts.length - 1];
-                                if (!localUsers.some(u => u.email === email)) {
-                                    localUsers.push({ id: userId, email: email, role: email === 'admin@frugal.com' ? 'admin' : 'user' });
+                                const email = `${emailParts[0]}@${emailParts.slice(1, -1).join('.')}.${emailParts[emailParts.length - 1]}`;
+                                if (!localUsers.some(u => u.id === userId)) {
+                                    // Calculate stats from localStorage to mimic the database view structure
+                                    const userTransactions = JSON.parse(localStorage.getItem(`transactions_${userId}`) || '[]');
+                                    const userBudgets = JSON.parse(localStorage.getItem(`budgets_${userId}`) || '[]');
+                                    const userGoals = JSON.parse(localStorage.getItem(`goals_${userId}`) || '[]');
+                                    const totalVolume = userTransactions.reduce((sum, t) => sum + t.amount, 0);
+
+                                    localUsers.push({
+                                        id: userId,
+                                        email: email,
+                                        role: email === 'admin@frugal.com' ? 'admin' : 'user',
+                                        transaction_count: userTransactions.length,
+                                        budget_count: userBudgets.length,
+                                        goal_count: userGoals.length,
+                                        total_volume: totalVolume
+                                    });
                                 }
                             }
                         }
                     }
+                    localUsers.sort((a, b) => a.email.localeCompare(b.email));
                     appState.userManagement.totalUsers = localUsers.length;
                     const start = (currentPage - 1) * usersPerPage;
                     const end = start + usersPerPage;
@@ -3690,11 +3662,12 @@
                             
                             <div class="space-y-4">
                                 ${usersOnPage.map(user => {
-                                    const { id: userId, email, role, name } = user;
-                                    const userTransactions = JSON.parse(localStorage.getItem(`transactions_${userId}`) || '[]');
-                                    const userBudgets = JSON.parse(localStorage.getItem(`budgets_${userId}`) || '[]');
-                                    const userGoals = JSON.parse(localStorage.getItem(`goals_${userId}`) || '[]');
-                                    const totalAmount = userTransactions.reduce((sum, t) => sum + t.amount, 0);
+                                    const { id: userId, email, role, name, transaction_count, budget_count, goal_count, total_volume } = user;
+                                    // Data is now coming directly from the database view, no need for localStorage here.
+                                    const userTransactionsCount = transaction_count || 0;
+                                    const userBudgetsCount = budget_count || 0;
+                                    const userGoalsCount = goal_count || 0;
+                                    const totalAmount = total_volume || 0;
                                     const hasPin = !!localStorage.getItem(`pin_${userId}`);
                                     
                                     const isAdminUser = role === 'admin';
@@ -3721,9 +3694,9 @@
                                                             </div>
                                                             <p class="text-xs sm:text-sm text-gray-500">ID: ${userId}</p>
                                                             <div class="flex items-center space-x-3 mt-2">
-                                                                <span class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full">${userTransactions.length} transaksi</span>
-                                                                <span class="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full">${userBudgets.length} anggaran</span>
-                                                                <span class="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full">${userGoals.length} target</span>
+                                                                <span class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full">${userTransactionsCount} transaksi</span>
+                                                                <span class="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full">${userBudgetsCount} anggaran</span>
+                                                                <span class="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full">${userGoalsCount} target</span>
                                                             </div>
                                                         </div>
                                                     </div>
@@ -6321,6 +6294,3 @@
     </script>
 <script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'980b24538623f93e',t:'MTc1ODEzODcyNS4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>
-
-
-
