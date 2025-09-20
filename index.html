@@ -392,6 +392,10 @@
                 const isAdmin = email === 'admin@frugal.com';
                 appState.user = { email, id: userId, role: isAdmin ? 'admin' : 'user' };
                 localStorage.setItem('frugal_user', JSON.stringify(appState.user));
+                if (isAdmin) {
+                    // Set default page for admin to admin-dashboard
+                    appState.currentPage = 'admin-dashboard';
+                }
                 console.log('✅ Login successful for:', email);
                 return { success: true };
             },
@@ -698,42 +702,6 @@
             });
         }
 
-        async function saveReceivable(receivable) {
-            if (!appState.user) return;
-            
-            const userId = appState.user.id;
-            receivable.id = Date.now();
-            receivable.user_id = userId;
-            receivable.status = 'unpaid';
-            receivable.created_at = new Date().toISOString();
-            
-            appState.receivables.push(receivable);
-            
-            try {
-                localStorage.setItem(`receivables_${userId}`, JSON.stringify(appState.receivables));
-                
-                if (useSupabase) {
-                    const { data, error } = await db.createReceivable(receivable);
-                    if (error) {
-                        showSyncStatus('error', 'Gagal sync piutang ke cloud');
-                        console.error('Supabase receivable create error:', error);
-                        appState.receivables.pop(); // Rollback jika Supabase gagal
-                        localStorage.setItem(`receivables_${userId}`, JSON.stringify(appState.receivables));
-                    } else {
-                        showSyncStatus('success', 'Piutang dicatat & disinkronisasi');
-                    }
-                } else {
-                    showSyncStatus('success', 'Piutang berhasil dicatat (lokal)');
-                }
-            } catch (error) {
-                console.error('Error creating receivable:', error);
-                showSyncStatus('error', 'Gagal mencatat piutang');
-                appState.receivables.pop(); // Rollback
-            } finally {
-                render();
-            }
-        }
-
         async function updateReceivableStatus(receivableId, status) {
             if (!appState.user) return;
 
@@ -823,6 +791,9 @@
                     if (error) {
                         showSyncStatus('error', 'Gagal sync utang ke cloud');
                         console.error('Supabase debt create error:', error);
+                        // Rollback jika Supabase gagal
+                        appState.debts.pop();
+                        localStorage.setItem(`debts_${userId}`, JSON.stringify(appState.debts));
                     } else {
                         showSyncStatus('success', 'Utang dicatat & disinkronisasi');
                     }
@@ -855,6 +826,9 @@
                 if (useSupabase) {
                     const { data, error } = await db.updateDebt(debtId, { status });
                     if (error) {
+                        // Rollback jika Supabase gagal
+                        appState.debts[debtIndex] = originalDebt;
+                        localStorage.setItem(`debts_${userId}`, JSON.stringify(appState.debts));
                         showSyncStatus('error', 'Gagal sync update status utang');
                     } else {
                         showSyncStatus('success', 'Status utang diperbarui & disinkronisasi');
@@ -1040,18 +1014,6 @@
                                 </div>
                             </button>
                             
-                            <button
-                                onclick="quickLogin('user@example.com')"
-                                class="w-full bg-white/10 hover:bg-white/20 text-white py-3 px-4 rounded-2xl transition-all duration-300 border border-white/20 hover:border-white/40 backdrop-blur-sm group"
-                            >
-                                <div class="flex items-center justify-center">
-                                    <div class="w-8 h-8 bg-gradient-to-br from-purple-400 to-pink-500 rounded-full flex items-center justify-center mr-3">
-                                        <i class="fas fa-user text-white text-sm"></i>
-                                    </div>
-                                    <span class="font-medium">user@example.com</span>
-                                    <i class="fas fa-arrow-right ml-auto opacity-0 group-hover:opacity-100 transition-opacity duration-300"></i>
-                                </div>
-                            </button>
                         </div>
 
                         <!-- Footer Info -->
@@ -1129,30 +1091,27 @@
                     } lg:translate-x-0 transition-transform duration-300 ease-in-out border-r border-white/20 dark:bg-slate-800/90 dark:border-slate-700">
                         <div class="flex flex-col h-full pt-20">
                             <!-- User Profile Section -->
-                            <div class="px-6 py-4 border-b border-gray-100">
-                                <div class="flex items-center space-x-3">
+                            <div class="px-6 py-4 border-b border-gray-100 dark:border-slate-700">
+                                <div class="flex items-center justify-between">
                                     <div class="w-12 h-12 bg-gradient-to-br from-indigo-400 to-purple-500 rounded-2xl flex items-center justify-center shadow-lg">
                                         <i class="fas fa-user text-white text-lg"></i>
                                     </div>
-                                    <div>
+                                    <div class="flex-1 ml-3">
                                         <p class="font-semibold text-gray-800 dark:text-gray-100">Selamat Datang!</p>
                                         <p class="text-sm text-gray-500 truncate dark:text-gray-400">${appState.user.email}</p>
                                     </div>
+                                    <button
+                                        onclick="handleLogout()"
+                                        title="Keluar"
+                                        class="ml-2 flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-xl font-semibold text-red-600 hover:bg-red-50 hover:text-red-700 transition-all duration-300 group dark:text-red-400 dark:hover:bg-red-500/10 dark:hover:text-red-300"
+                                    >
+                                        <i class="fas fa-sign-out-alt text-lg group-hover:scale-110 transition-transform"></i>
+                                    </button>
                                 </div>
                             </div>
                             
                             <div class="flex-1 px-4 py-6 space-y-2">
                                 ${renderMenuItems()}
-                            </div>
-                            
-                            <div class="p-4 border-t border-gray-100">
-                                <button
-                                    onclick="handleLogout()"
-                                    class="w-full flex items-center px-4 py-3 text-left rounded-2xl font-semibold text-red-600 hover:bg-red-50 hover:text-red-700 transition-all duration-300 group dark:text-red-400 dark:hover:bg-red-500/10 dark:hover:text-red-300"
-                                >
-                                    <i class="fas fa-sign-out-alt mr-3 w-5 group-hover:scale-110 transition-transform"></i>
-                                    Keluar
-                                </button>
                             </div>
                         </div>
                     </div>
@@ -1207,9 +1166,14 @@
                 { id: 'system-reports', label: 'Laporan Sistem', icon: 'fas fa-chart-area' }
             ];
             
-            const menuItems = appState.user?.role === 'admin' 
-                ? [...adminMenuItems, ...baseMenuItems] 
-                : baseMenuItems;
+            let menuItems;
+            if (appState.user?.role === 'admin') {
+                // Admin only sees admin menus and the settings menu
+                const settingsMenu = baseMenuItems.find(item => item.id === 'settings');
+                menuItems = [...adminMenuItems, settingsMenu];
+            } else {
+                menuItems = baseMenuItems;
+            }
 
             return menuItems.map(item => `
                 <button
@@ -3552,6 +3516,58 @@
         }
 
         function renderSystemReports() {
+            // --- Data Aggregation ---
+            const allUsers = [];
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key && key.startsWith('pin_')) {
+                    const emailParts = key.replace('pin_', '').split('_');
+                    if (emailParts.length >= 3) {
+                        const reconstructedEmail = emailParts[0] + '@' + emailParts.slice(1, -1).join('.') + '.' + emailParts[emailParts.length - 1];
+                        if (!allUsers.find(u => u.email === reconstructedEmail)) {
+                            allUsers.push({ email: reconstructedEmail, id: key.replace('pin_', '') });
+                        }
+                    }
+                }
+            }
+
+            let totalTransactions = 0;
+            let totalVolume = 0;
+            const userActivity = [];
+
+            allUsers.forEach(user => {
+                const userTransactions = JSON.parse(localStorage.getItem(`transactions_${user.id}`) || '[]');
+                const transactionCount = userTransactions.length;
+                const userVolume = userTransactions.reduce((sum, t) => sum + t.amount, 0);
+                
+                totalTransactions += transactionCount;
+                totalVolume += userVolume;
+                
+                userActivity.push({
+                    email: user.email,
+                    transactionCount: transactionCount,
+                    volume: userVolume
+                });
+            });
+
+            const topActiveUsers = userActivity.sort((a, b) => b.transactionCount - a.transactionCount).slice(0, 5);
+
+            // Simulated data for charts
+            const userGrowthData = [
+                { month: 'Jul', users: 5 }, { month: 'Agu', users: 8 }, { month: 'Sep', users: 12 },
+                { month: 'Okt', users: 15 }, { month: 'Nov', users: allUsers.length }
+            ];
+            const maxGrowth = Math.max(1, ...userGrowthData.map(d => d.users));
+
+            const transactionActivityData = [
+                { month: 'Jul', count: 150 }, { month: 'Agu', count: 210 }, { month: 'Sep', count: 280 },
+                { month: 'Okt', count: 350 }, { month: 'Nov', count: totalTransactions }
+            ];
+            const maxActivity = Math.max(1, ...transactionActivityData.map(d => d.count));
+            
+            // Simulated visitor count
+            const visitorCount = 1250 + Math.floor(Math.random() * 100);
+
             return `
                 <div class="space-y-6 sm:space-y-8 fade-in">
                     <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
@@ -3564,24 +3580,65 @@
                         </div>
                     </div>
                     
-                    <div class="bg-white/70 backdrop-blur-sm rounded-3xl p-6 sm:p-8 shadow-xl border border-white/20 text-center">
-                        <div class="w-20 h-20 bg-gradient-to-br from-purple-100 to-pink-100 rounded-3xl flex items-center justify-center mx-auto mb-6">
-                            <i class="fas fa-chart-area text-3xl text-purple-400"></i>
+                    <!-- System Stats -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+                        <div class="bg-white/70 backdrop-blur-sm rounded-3xl p-6 shadow-xl border border-white/20"><p class="text-sm font-medium text-gray-600 mb-2">Total Pengguna</p><p class="text-3xl font-bold text-blue-600">${allUsers.length}</p></div>
+                        <div class="bg-white/70 backdrop-blur-sm rounded-3xl p-6 shadow-xl border border-white/20"><p class="text-sm font-medium text-gray-600 mb-2">Total Transaksi</p><p class="text-3xl font-bold text-green-600">${totalTransactions.toLocaleString('id-ID')}</p></div>
+                        <div class="bg-white/70 backdrop-blur-sm rounded-3xl p-6 shadow-xl border border-white/20"><p class="text-sm font-medium text-gray-600 mb-2">Total Volume</p><p class="text-3xl font-bold text-purple-600">Rp ${(totalVolume * 1000).toLocaleString('id-ID')}</p></div>
+                        <div class="bg-white/70 backdrop-blur-sm rounded-3xl p-6 shadow-xl border border-white/20"><p class="text-sm font-medium text-gray-600 mb-2">Jumlah Visitor</p><p class="text-3xl font-bold text-orange-600">${visitorCount.toLocaleString('id-ID')}</p></div>
+                    </div>
+
+                    <!-- Charts -->
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 sm:gap-8">
+                        <!-- User Growth Chart -->
+                        <div class="bg-white/70 backdrop-blur-sm rounded-3xl p-6 sm:p-8 shadow-xl border border-white/20">
+                            <h3 class="text-lg font-bold text-gray-800 mb-6">Pertumbuhan Pengguna</h3>
+                            <div class="relative h-40 flex items-end justify-around">
+                                ${userGrowthData.map(data => `
+                                    <div class="flex flex-col items-center w-1/6">
+                                        <div class="w-6 bg-gradient-to-t from-blue-500 to-blue-400 rounded-t-lg shadow-lg" style="height: ${(data.users / maxGrowth) * 100}%" title="${data.users} pengguna"></div>
+                                        <div class="mt-2 text-xs text-gray-500">${data.month}</div>
+                                    </div>
+                                `).join('')}
+                            </div>
                         </div>
-                        <h4 class="text-lg sm:text-xl font-semibold text-gray-700 mb-2">Laporan Sistem Mendalam</h4>
-                        <p class="text-gray-500 mb-6 text-sm sm:text-base">Fitur analisis sistem akan segera tersedia dengan dashboard yang lebih komprehensif</p>
-                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                            <div class="bg-white/50 rounded-2xl p-4 border border-white/30">
-                                <h5 class="font-semibold text-gray-800 mb-2">Analisis Pengguna</h5>
-                                <p class="text-sm text-gray-600">Pola penggunaan dan aktivitas</p>
+
+                        <!-- Transaction Activity Chart -->
+                        <div class="bg-white/70 backdrop-blur-sm rounded-3xl p-6 sm:p-8 shadow-xl border border-white/20">
+                            <h3 class="text-lg font-bold text-gray-800 mb-6">Aktivitas Transaksi</h3>
+                            <div class="relative h-40 flex items-end justify-around">
+                                ${transactionActivityData.map(data => `
+                                    <div class="flex flex-col items-center w-1/6">
+                                        <div class="w-6 bg-gradient-to-t from-green-500 to-green-400 rounded-t-lg shadow-lg" style="height: ${(data.count / maxActivity) * 100}%" title="${data.count} transaksi"></div>
+                                        <div class="mt-2 text-xs text-gray-500">${data.month}</div>
+                                    </div>
+                                `).join('')}
                             </div>
-                            <div class="bg-white/50 rounded-2xl p-4 border border-white/30">
-                                <h5 class="font-semibold text-gray-800 mb-2">Performa Sistem</h5>
-                                <p class="text-sm text-gray-600">Kecepatan dan stabilitas</p>
-                            </div>
-                            <div class="bg-white/50 rounded-2xl p-4 border border-white/30">
-                                <h5 class="font-semibold text-gray-800 mb-2">Tren Keuangan</h5>
-                                <p class="text-sm text-gray-600">Analisis data finansial</p>
+                        </div>
+                    </div>
+
+                    <!-- Top Active Users -->
+                    <div class="bg-white/70 backdrop-blur-sm rounded-3xl p-6 sm:p-8 shadow-xl border border-white/20">
+                        <h3 class="text-lg font-bold text-gray-800 mb-6">Pengguna Paling Aktif</h3>
+                        <div class="space-y-4">
+                            ${topActiveUsers.map((user, index) => `
+                                <div class="flex items-center justify-between p-4 bg-white/50 rounded-2xl border border-white/30">
+                                    <div class="flex items-center space-x-4">
+                                        <span class="font-bold text-gray-500 w-6 text-center">${index + 1}.</span>
+                                        <div class="w-10 h-10 bg-gradient-to-br from-indigo-400 to-purple-500 rounded-xl flex items-center justify-center shadow-lg">
+                                            <i class="fas fa-user text-white"></i>
+                                        </div>
+                                        <div>
+                                            <p class="font-semibold text-gray-800">${user.email}</p>
+                                            <p class="text-xs text-gray-500">Volume: Rp ${(user.volume * 1000).toLocaleString('id-ID')}</p>
+                                        </div>
+                                    </div>
+                                    <div class="text-right">
+                                        <p class="font-bold text-blue-600">${user.transactionCount} Transaksi</p>
+                                    </div>
+                                </div>
+                            `).join('')}
+                            ${topActiveUsers.length === 0 ? `<p class="text-center text-gray-500">Belum ada aktivitas pengguna.</p>` : ''}
                             </div>
                         </div>
                     </div>
@@ -4172,86 +4229,39 @@
         }
 
         async function createReceivable(receivable) { // Renamed from saveReceivable
-            const transaction = appState.transactions.find(t => t.id === transactionId);
-            if (!transaction) {
-                showSyncStatus('error', 'Transaksi tidak ditemukan.');
-                return;
-            }
-
-            const modal = document.createElement('div');
-            modal.id = 'edit-transaction-modal';
-            modal.className = 'fixed inset-0 bg-black/60 backdrop-blur-lg flex items-center justify-center p-4 z-50 animate-fadeIn';
+            if (!appState.user) return;
             
-            const isExpense = transaction.type === 'expense';
-
-            const expenseCategories = `
-                <option value="Makanan" ${transaction.category === 'Makanan' ? 'selected' : ''}>🍽️ Makanan & Minuman</option>
-                <option value="Transportasi" ${transaction.category === 'Transportasi' ? 'selected' : ''}>🚗 Transportasi</option>
-                <option value="Belanja" ${transaction.category === 'Belanja' ? 'selected' : ''}>🛍️ Belanja</option>
-                <option value="Tagihan" ${transaction.category === 'Tagihan' ? 'selected' : ''}>📄 Tagihan & Utilitas</option>
-                <option value="Hiburan" ${transaction.category === 'Hiburan' ? 'selected' : ''}>🎬 Hiburan</option>
-                <option value="Kesehatan" ${transaction.category === 'Kesehatan' ? 'selected' : ''}>🏥 Kesehatan</option>
-                <option value="Pendidikan" ${transaction.category === 'Pendidikan' ? 'selected' : ''}>📚 Pendidikan</option>
-                <option value="Lainnya" ${transaction.category === 'Lainnya' ? 'selected' : ''}>📦 Lainnya</option>
-            `;
-
-            const incomeCategories = `
-                <option value="Gaji" ${transaction.category === 'Gaji' ? 'selected' : ''}>💰 Gaji & Upah</option>
-                <option value="Freelance" ${transaction.category === 'Freelance' ? 'selected' : ''}>💻 Freelance</option>
-                <option value="Investasi" ${transaction.category === 'Investasi' ? 'selected' : ''}>📈 Investasi & Dividen</option>
-                <option value="Hadiah" ${transaction.category === 'Hadiah' ? 'selected' : ''}>🎁 Hadiah & Bonus</option>
-                <option value="Bisnis" ${transaction.category === 'Bisnis' ? 'selected' : ''}>🏪 Bisnis Sampingan</option>
-                <option value="Lainnya" ${transaction.category === 'Lainnya' ? 'selected' : ''}>📦 Lainnya</option>
-            `;
-
-            modal.innerHTML = `
-                <div class="bg-white/95 dark:bg-slate-800/95 backdrop-blur-3xl rounded-3xl p-8 w-full max-w-lg shadow-2xl border border-white/40 dark:border-slate-700 animate-slideUp max-h-[90vh] overflow-y-auto">
-                    <div class="flex justify-between items-center mb-6">
-                        <h3 class="text-xl font-bold text-gray-800 dark:text-white">Edit Transaksi</h3>
-                        <button onclick="document.getElementById('edit-transaction-modal').remove()" class="text-gray-500 hover:text-gray-700 p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-slate-700 transition-all duration-300">
-                            <i class="fas fa-times text-xl"></i>
-                        </button>
-                    </div>
-                    <form onsubmit="handleUpdateTransaction(event, ${transaction.id})" class="space-y-4">
-                        <div>
-                            <label class="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Jenis Transaksi</label>
-                            <select id="edit-transaction-type" class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl dark:bg-slate-700 dark:border-slate-600 dark:text-white" disabled>
-                                <option value="expense" ${isExpense ? 'selected' : ''}>Pengeluaran</option>
-                                <option value="income" ${!isExpense ? 'selected' : ''}>Pemasukan</option>
-                            </select>
-                        </div>
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <div>
-                                <label class="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Jumlah (Rp)</label>
-                                <input type="number" step="1000" id="edit-transaction-amount" value="${transaction.amount * 1000}" class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl dark:bg-slate-700 dark:border-slate-600 dark:text-white" required />
-                            </div>
-                            <div>
-                                <label class="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Tanggal</label>
-                                <input type="date" id="edit-transaction-date" value="${transaction.date}" class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl dark:bg-slate-700 dark:border-slate-600 dark:text-white" required />
-                            </div>
-                        </div>
-                        <div>
-                            <label class="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Kategori</p>
-                            <select id="edit-transaction-category" class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl dark:bg-slate-700 dark:border-slate-600 dark:text-white" required>
-                                ${isExpense ? expenseCategories : incomeCategories}
-                            </select>
-                        </div>
-                        <div>
-                            <label class="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Deskripsi</p>
-                            <input type="text" id="edit-transaction-description" value="${transaction.description}" class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl dark:bg-slate-700 dark:border-slate-600 dark:text-white" required />
-                        </div>
-                        <div class="flex space-x-3 pt-4">
-                            <button type="submit" class="flex-1 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white py-3 rounded-xl font-semibold shadow-lg">
-                                <i class="fas fa-save mr-2"></i>Simpan Perubahan
-                            </button>
-                            <button type="button" onclick="document.getElementById('edit-transaction-modal').remove()" class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700 py-3 rounded-xl font-semibold dark:bg-slate-600 dark:hover:bg-slate-500 dark:text-gray-200">
-                                <i class="fas fa-times mr-2"></i>Batal
-                            </button>
-                        </div>
-                    </form>
-                </div>
-            `;
-            document.body.appendChild(modal);
+            const userId = appState.user.id;
+            receivable.id = Date.now();
+            receivable.user_id = userId;
+            receivable.status = 'unpaid';
+            receivable.created_at = new Date().toISOString();
+            
+            appState.receivables.push(receivable);
+            
+            try {
+                localStorage.setItem(`receivables_${userId}`, JSON.stringify(appState.receivables));
+                
+                if (useSupabase) {
+                    const { data, error } = await db.createReceivable(receivable);
+                    if (error) {
+                        showSyncStatus('error', 'Gagal sync piutang ke cloud');
+                        console.error('Supabase receivable create error:', error);
+                        appState.receivables.pop(); // Rollback jika Supabase gagal
+                        localStorage.setItem(`receivables_${userId}`, JSON.stringify(appState.receivables));
+                    } else {
+                        showSyncStatus('success', 'Piutang dicatat & disinkronisasi');
+                    }
+                } else {
+                    showSyncStatus('success', 'Piutang berhasil dicatat (lokal)');
+                }
+            } catch (error) {
+                console.error('Error creating receivable:', error);
+                showSyncStatus('error', 'Gagal mencatat piutang');
+                appState.receivables.pop(); // Rollback
+            } finally {
+                render();
+            }
         }
 
         function showEditTransactionModal(transactionId) {
