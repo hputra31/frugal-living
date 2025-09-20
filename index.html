@@ -169,6 +169,14 @@
                     .select();
                 return { data, error };
             },
+
+            async deleteUser(userId) {
+                const { data, error } = await supabase
+                    .from('users')
+                    .delete()
+                    .eq('id', userId);
+                return { data, error };
+            },
             
             // Transaction functions
             async getTransactions(userId) {
@@ -344,6 +352,21 @@
             }
         };
 
+        // Hashing utility using Web Crypto API for enhanced security
+        const hasher = {
+            async hashPin(pin, salt) {
+                if (!pin || !salt) throw new Error("PIN and salt are required for hashing.");
+                const encoder = new TextEncoder();
+                // Combine PIN and a unique salt (user ID) before hashing
+                const data = encoder.encode(pin + salt); 
+                const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+                const hashArray = Array.from(new Uint8Array(hashBuffer));
+                // Convert buffer to hex string for storage
+                const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+                return hashHex;
+            }
+        };
+
         // Mock authentication with PIN system
         const auth = {
             login: async (email, pin = null) => {
@@ -383,20 +406,35 @@
                     return { success: false, needPin: true };
                 }
                 
+                // Hash the input PIN and compare it with the stored hash
+                const hashedPin = await hasher.hashPin(pin, userId);
                 // Check if PIN matches
-                console.log('🔍 Checking PIN for', email, '- Input:', pin, 'Stored:', storedPin);
-                if (storedPin && pin !== storedPin) {
+                console.log('🔍 Checking PIN hash for', email);
+                if (storedPin && hashedPin !== storedPin) {
                     return { success: false, error: 'PIN salah' };
                 }
 
-                const isAdmin = email === 'admin@frugal.com';
-                appState.user = { email, id: userId, role: isAdmin ? 'admin' : 'user' };
+                let userRole = 'user';
+                if (useSupabase) {
+                    const { data: dbUser, error } = await db.getUserByEmail(email);
+                    if (dbUser && dbUser.role) {
+                        userRole = dbUser.role;
+                    } else if (email === 'admin@frugal.com') {
+                        // Fallback for initial admin setup or if DB fetch fails
+                        userRole = 'admin';
+                    }
+                } else {
+                    // Local mode
+                    if (email === 'admin@frugal.com') userRole = 'admin';
+                }
+
+                appState.user = { email, id: userId, role: userRole };
                 localStorage.setItem('frugal_user', JSON.stringify(appState.user));
-                if (isAdmin) {
+                if (userRole === 'admin') {
                     // Set default page for admin to admin-dashboard
                     appState.currentPage = 'admin-dashboard';
                 }
-                console.log('✅ Login successful for:', email);
+                console.log(`✅ Login successful for: ${email} with role: ${userRole}`);
                 return { success: true };
             },
             logout: () => {
@@ -424,19 +462,63 @@
                     await loadUserData();
                 }
             },
-            setPin: (newPin) => {
-                if (appState.user) {
-                    localStorage.setItem(`pin_${appState.user.id}`, newPin);
-                    return true;
+            setPin: async (newPin) => {
+                if (!appState.user) return false;
+                
+                const userId = appState.user.id;
+                const oldPin = localStorage.getItem(`pin_${userId}`);
+                
+                const hashedPin = await hasher.hashPin(newPin, userId);
+
+                // Update localStorage first (optimistic)
+                localStorage.setItem(`pin_${userId}`, hashedPin);
+                
+                if (useSupabase) {
+                    try {
+                        const { error } = await db.updateUser(userId, { pin: hashedPin });
+                        if (error) {
+                            console.error('❌ Supabase PIN update error:', error);
+                            // Rollback localStorage change if Supabase fails
+                            if (oldPin) { localStorage.setItem(`pin_${userId}`, oldPin); } 
+                            else { localStorage.removeItem(`pin_${userId}`); }
+                            showSyncStatus('error', 'Gagal sinkronisasi PIN ke cloud.');
+                        }
+                        console.log('✅ PIN hash updated in Supabase for user:', userId);
+                    } catch (e) {
+                        console.error('❌ Exception during PIN update:', e);
+                        if (oldPin) { localStorage.setItem(`pin_${userId}`, oldPin); } 
+                        else { localStorage.removeItem(`pin_${userId}`); }
+                        return false;
+                    }
                 }
-                return false;
+                return true;
             },
-            removePin: () => {
-                if (appState.user) {
-                    localStorage.removeItem(`pin_${appState.user.id}`);
-                    return true;
+            removePin: async () => {
+                if (!appState.user) return false;
+                
+                const userId = appState.user.id;
+                const oldPin = localStorage.getItem(`pin_${userId}`);
+                
+                // Remove from localStorage first
+                localStorage.removeItem(`pin_${userId}`);
+                
+                if (useSupabase) {
+                    try {
+                        const { error } = await db.updateUser(userId, { pin: null });
+                        if (error) {
+                            console.error('❌ Supabase PIN removal error:', error);
+                            localStorage.setItem(`pin_${userId}`, oldPin); // Rollback
+                            showSyncStatus('error', 'Gagal hapus PIN di cloud.');
+                            return false;
+                        }
+                        console.log('✅ PIN removed from Supabase for user:', userId);
+                    } catch (e) {
+                        console.error('❌ Exception during PIN removal:', e);
+                        localStorage.setItem(`pin_${userId}`, oldPin); // Rollback
+                        return false;
+                    }
                 }
-                return false;
+                return true;
             },
             hasPin: () => {
                 if (appState.user) {
@@ -1129,7 +1211,7 @@
                     <footer class="lg:ml-72 bg-white/60 backdrop-blur-sm border-t border-white/20 py-6 px-4 sm:px-6 lg:px-8 dark:bg-slate-800/60 dark:border-slate-700">
                         <div class="text-center">
                             <p class="text-sm text-gray-600 dark:text-gray-400">
-                                Dibuat dengan ❤️ oleh <span class="font-semibold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">HPUTRAX</span>
+                                Frugal Living by <span class="font-semibold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">HPUTRAX</span>
                             </p>
                         </div>
                     </footer>
@@ -1154,9 +1236,9 @@
                 { id: 'transactions', label: 'Transaksi', icon: 'fas fa-receipt' },
                 { id: 'budgets', label: 'Anggaran', icon: 'fas fa-chart-pie' },
                 { id: 'receivables', label: 'Piutang', icon: 'fas fa-hand-holding-usd' },
-                { id: 'reports', label: 'Laporan', icon: 'fas fa-chart-bar' },
                 { id: 'debts', label: 'Utang', icon: 'fas fa-credit-card' },
                 { id: 'goals', label: 'Target', icon: 'fas fa-bullseye' },
+                { id: 'reports', label: 'Laporan', icon: 'fas fa-chart-bar' },
                 { id: 'settings', label: 'Pengaturan', icon: 'fas fa-cog' }
             ];
             
@@ -2107,9 +2189,12 @@
             const balance = totalIncome - totalExpense;
             const savingsRate = totalIncome > 0 ? ((balance / totalIncome) * 100) : 0;
             
-            // Calculate monthly averages (assuming data spans multiple months)
-            const monthlyIncome = totalIncome > 0 ? totalIncome : 3200;
-            const monthlyExpense = totalExpense > 0 ? totalExpense : 2650;
+            // Calculate monthly averages dynamically
+            const dateSet = new Set(appState.transactions.map(t => new Date(t.date).toISOString().slice(0, 7))); // Get unique months YYYY-MM
+            const numMonths = dateSet.size > 0 ? dateSet.size : 1;
+
+            const monthlyIncome = totalIncome / numMonths;
+            const monthlyExpense = totalExpense / numMonths;
             const monthlySavings = monthlyIncome - monthlyExpense;
             
             // Category breakdown for expenses
@@ -2712,7 +2797,7 @@
                                                 <div class="text-yellow-400">-- 🗄️ FRUGAL LIVING DATABASE SETUP</div>
                                                 <div class="text-yellow-400">-- Copy and paste this entire script into Supabase SQL Editor</div>
                                                 <br>
-                                                <div class="text-blue-400">-- 1️⃣ Users Table</div>
+                                                <div class="text-blue-400">-- 1️⃣ Users Table (stores hashed PIN)</div>
                                                 <div>CREATE TABLE IF NOT EXISTS users (</div>
                                                 <div>&nbsp;&nbsp;id TEXT PRIMARY KEY,</div>
                                                 <div>&nbsp;&nbsp;email TEXT UNIQUE NOT NULL,</div>
@@ -3223,17 +3308,29 @@
 
         // Admin Pages
         function renderAdminDashboard() {
-            // Get all users data
-            const allUsers = ['demo@frugal.com', 'user@example.com', 'test@budget.com'];
+            // Get all users data dynamically
+            const allUsers = [];
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key && key.startsWith('pin_')) {
+                    const emailParts = key.replace('pin_', '').split('_');
+                    if (emailParts.length >= 3) {
+                        const reconstructedEmail = emailParts[0] + '@' + emailParts.slice(1, -1).join('.') + '.' + emailParts[emailParts.length - 1];
+                        if (!allUsers.find(u => u.email === reconstructedEmail)) {
+                            allUsers.push({ email: reconstructedEmail, id: key.replace('pin_', '') });
+                        }
+                    }
+                }
+            }
+
             let totalUsers = allUsers.length;
             let totalTransactions = 0;
             let totalAmount = 0;
             
-            allUsers.forEach(email => {
-                const userId = email.replace(/[@.]/g, '_');
-                const userTransactions = JSON.parse(localStorage.getItem(`transactions_${userId}`) || '[]');
+            allUsers.forEach(user => {
+                const userTransactions = JSON.parse(localStorage.getItem(`transactions_${user.id}`) || '[]');
                 totalTransactions += userTransactions.length;
-                totalAmount += userTransactions.reduce((sum, t) => sum + t.amount, 0);
+                totalAmount += userTransactions.reduce((sum, t) => sum + (t.amount || 0), 0);
             });
 
             return `
@@ -3288,7 +3385,7 @@
                             </div>
                             <div>
                                 <p class="text-xs sm:text-sm font-medium text-gray-600 mb-2">Total Volume</p>
-                                <p class="text-xl sm:text-2xl font-bold text-purple-600">Rp ${totalAmount.toLocaleString('id-ID')}</p>
+                                <p class="text-xl sm:text-2xl font-bold text-purple-600">Rp ${(totalAmount * 1000).toLocaleString('id-ID')}</p>
                                 <p class="text-xs text-purple-500 mt-1">Nilai transaksi</p>
                             </div>
                         </div>
@@ -3301,7 +3398,7 @@
                             </div>
                             <div>
                                 <p class="text-xs sm:text-sm font-medium text-gray-600 mb-2">Rata-rata per User</p>
-                                <p class="text-xl sm:text-2xl font-bold text-orange-600">${Math.round(totalTransactions / totalUsers)}</p>
+                                <p class="text-xl sm:text-2xl font-bold text-orange-600">${totalUsers > 0 ? Math.round(totalTransactions / totalUsers) : 0}</p>
                                 <p class="text-xs text-orange-500 mt-1">Transaksi/user</p>
                             </div>
                         </div>
@@ -3350,7 +3447,7 @@
             const allUsers = [];
             for (let i = 0; i < localStorage.length; i++) {
                 const key = localStorage.key(i);
-                if (key && key.startsWith('pin_') && !key.includes('admin_frugal_com')) {
+                if (key && key.startsWith('pin_')) {
                     const email = key.replace('pin_', '').replace(/_/g, '@').replace('@', '@').replace('@', '.');
                     // Fix email format
                     const emailParts = key.replace('pin_', '').split('_');
@@ -3362,15 +3459,6 @@
                     }
                 }
             }
-            
-            // Add default users if not exist
-            const defaultUsers = ['demo@frugal.com', 'user@example.com', 'test@budget.com'];
-            defaultUsers.forEach(email => {
-                if (!allUsers.includes(email)) {
-                    allUsers.push(email);
-                }
-            });
-            
             return `
                 <div class="space-y-6 sm:space-y-8 fade-in">
                     <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
@@ -3448,14 +3536,15 @@
                             </h3>
                             
                             <div class="space-y-4">
-                                ${allUsers.map(email => {
+                                ${allUsers.sort((a, b) => a.localeCompare(b)).map(email => {
                                     const userId = email.replace(/[@.]/g, '_');
                                     const userTransactions = JSON.parse(localStorage.getItem(`transactions_${userId}`) || '[]');
                                     const userBudgets = JSON.parse(localStorage.getItem(`budgets_${userId}`) || '[]');
                                     const userGoals = JSON.parse(localStorage.getItem(`goals_${userId}`) || '[]');
                                     const totalAmount = userTransactions.reduce((sum, t) => sum + t.amount, 0);
                                     const hasPin = !!localStorage.getItem(`pin_${userId}`);
-                                    const isDefaultUser = ['demo@frugal.com', 'user@example.com', 'test@budget.com'].includes(email);
+                                    const isAdminUser = email === 'admin@frugal.com';
+                                    const isDefaultUser = ['demo@frugal.com', 'user@example.com', 'test@budget.com'].includes(email) && !isAdminUser;
                                     
                                     return `
                                         <div class="bg-white/80 backdrop-blur-sm rounded-2xl p-4 sm:p-6 shadow-lg border border-white/30 hover:shadow-xl transition-all duration-300">
@@ -3469,7 +3558,11 @@
                                                         <div>
                                                             <div class="flex items-center space-x-2">
                                                                 <h4 class="font-semibold text-gray-800 text-sm sm:text-base">${email}</h4>
-                                                                ${isDefaultUser ? '<span class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full">Default</span>' : '<span class="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full">Custom</span>'}
+                                                                ${isAdminUser ? 
+                                                                    '<span class="text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full font-bold">👑 Admin Utama</span>' : 
+                                                                    isDefaultUser ? 
+                                                                    '<span class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full">Default</span>' : 
+                                                                    '<span class="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full">Custom</span>'}
                                                                 ${hasPin ? '<i class="fas fa-lock text-green-500 text-xs" title="PIN Protected"></i>' : '<i class="fas fa-unlock text-red-500 text-xs" title="No PIN"></i>'}
                                                             </div>
                                                             <p class="text-xs sm:text-sm text-gray-500">ID: ${userId}</p>
@@ -3481,7 +3574,7 @@
                                                         </div>
                                                     </div>
                                                     <div class="text-right">
-                                                        <p class="text-lg sm:text-xl font-bold text-gray-800">Rp ${totalAmount.toLocaleString('id-ID')}</p>
+                                                        <p class="text-lg sm:text-xl font-bold text-gray-800">Rp ${(totalAmount * 1000).toLocaleString('id-ID')}</p>
                                                         <p class="text-xs sm:text-sm text-gray-500">Total volume</p>
                                                         <p class="text-xs text-gray-400 mt-1">Bergabung: Nov 2024</p>
                                                     </div>
@@ -3498,9 +3591,12 @@
                                                     <button onclick="exportUserData('${email}')" class="bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white px-3 sm:px-4 py-1 sm:py-2 rounded-xl font-semibold text-xs sm:text-sm shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300">
                                                         <i class="fas fa-download mr-1"></i>Export
                                                     </button>
-                                                    ${!isDefaultUser ? `
+                                                    ${!isDefaultUser && !isAdminUser ? `
                                                         <button onclick="deleteUser('${email}')" class="bg-gradient-to-r from-red-500 to-rose-600 hover:from-red-600 hover:to-rose-700 text-white px-3 sm:px-4 py-1 sm:py-2 rounded-xl font-semibold text-xs sm:text-sm shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300">
                                                             <i class="fas fa-trash mr-1"></i>Hapus
+                                                        </button>
+                                                        <button onclick="promoteToAdmin('${email}')" class="bg-gradient-to-r from-purple-500 to-pink-600 hover:from-purple-600 hover:to-pink-700 text-white px-3 sm:px-4 py-1 sm:py-2 rounded-xl font-semibold text-xs sm:text-sm shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300">
+                                                            <i class="fas fa-user-shield mr-1"></i>Jadikan Admin
                                                         </button>
                                                     ` : ''}
                                                 </div>
@@ -3552,18 +3648,42 @@
 
             const topActiveUsers = userActivity.sort((a, b) => b.transactionCount - a.transactionCount).slice(0, 5);
 
+            // --- Dynamic Chart Data Generation ---
+            const transactionActivity = {};
+            const monthNamesChart = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+            const todayChart = new Date();
+
+            // Initialize last 6 months
+            for (let i = 5; i >= 0; i--) {
+                const d = new Date(todayChart.getFullYear(), todayChart.getMonth() - i, 1);
+                const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+                transactionActivity[key] = {
+                    label: monthNamesChart[d.getMonth()],
+                    count: 0
+                };
+            }
+
+            // Aggregate transactions by month from all users
+            allUsers.forEach(user => {
+                const userTransactions = JSON.parse(localStorage.getItem(`transactions_${user.id}`) || '[]');
+                userTransactions.forEach(t => {
+                    const d = new Date(t.date);
+                    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+                    if (transactionActivity[key]) {
+                        transactionActivity[key].count++;
+                    }
+                });
+            });
+
+            const dynamicTransactionActivityData = Object.values(transactionActivity);
+            const maxActivity = Math.max(1, ...dynamicTransactionActivityData.map(d => d.count));
+
             // Simulated data for charts
             const userGrowthData = [
                 { month: 'Jul', users: 5 }, { month: 'Agu', users: 8 }, { month: 'Sep', users: 12 },
                 { month: 'Okt', users: 15 }, { month: 'Nov', users: allUsers.length }
             ];
             const maxGrowth = Math.max(1, ...userGrowthData.map(d => d.users));
-
-            const transactionActivityData = [
-                { month: 'Jul', count: 150 }, { month: 'Agu', count: 210 }, { month: 'Sep', count: 280 },
-                { month: 'Okt', count: 350 }, { month: 'Nov', count: totalTransactions }
-            ];
-            const maxActivity = Math.max(1, ...transactionActivityData.map(d => d.count));
             
             // Simulated visitor count
             const visitorCount = 1250 + Math.floor(Math.random() * 100);
@@ -3607,10 +3727,10 @@
                         <div class="bg-white/70 backdrop-blur-sm rounded-3xl p-6 sm:p-8 shadow-xl border border-white/20">
                             <h3 class="text-lg font-bold text-gray-800 mb-6">Aktivitas Transaksi</h3>
                             <div class="relative h-40 flex items-end justify-around">
-                                ${transactionActivityData.map(data => `
+                                ${dynamicTransactionActivityData.map(data => `
                                     <div class="flex flex-col items-center w-1/6">
                                         <div class="w-6 bg-gradient-to-t from-green-500 to-green-400 rounded-t-lg shadow-lg" style="height: ${(data.count / maxActivity) * 100}%" title="${data.count} transaksi"></div>
-                                        <div class="mt-2 text-xs text-gray-500">${data.month}</div>
+                                        <div class="mt-2 text-xs text-gray-500">${data.label}</div>
                                     </div>
                                 `).join('')}
                             </div>
@@ -3701,15 +3821,11 @@
                             <p class="text-gray-600">Akun <span class="font-semibold text-indigo-600">${email}</span> dilindungi PIN</p>
                             ${email === 'demo@frugal.com' ? `
                                 <div class="mt-4 p-3 bg-blue-50 rounded-2xl border border-blue-200">
-                                    <p class="text-blue-700 text-sm">
-                                        💡 <strong>Demo PIN:</strong> <span class="font-mono bg-blue-100 px-2 py-1 rounded">123456</span>
-                                    </p>
+                                    <p class="text-blue-700 text-sm">💡 <strong>Hint:</strong> PIN untuk akun demo adalah <strong>123456</strong>.</p>
                                 </div>
                             ` : email === 'admin@frugal.com' ? `
                                 <div class="mt-4 p-3 bg-yellow-50 rounded-2xl border border-yellow-200">
-                                    <p class="text-yellow-700 text-sm">
-                                        👑 <strong>Admin PIN:</strong> <span class="font-mono bg-yellow-100 px-2 py-1 rounded">999999</span>
-                                    </p>
+                                    <p class="text-yellow-700 text-sm">👑 <strong>Hint:</strong> PIN untuk akun admin adalah <strong>999999</strong>.</p>
                                     <p class="text-yellow-600 text-xs mt-1">Akses penuh ke sistem administrasi</p>
                                 </div>
                             ` : `
@@ -4794,7 +4910,7 @@
             document.getElementById('old-pin').focus();
         }
 
-        function handleSetPin(event) {
+        async function handleSetPin(event) {
             event.preventDefault();
             const newPin = document.getElementById('new-pin').value;
             const confirmPin = document.getElementById('confirm-pin').value;
@@ -4809,24 +4925,26 @@
                 return;
             }
             
-            if (auth.setPin(newPin)) {
-                showSyncStatus('success', 'PIN berhasil diatur! Akun Anda sekarang lebih aman.');
+            const success = await auth.setPin(newPin);
+            if (success) {
+                showSyncStatus('success', 'PIN berhasil diatur & disinkronisasi!');
                 event.target.closest('.fixed').remove();
                 render();
             } else {
-                alert('Gagal mengatur PIN. Silakan coba lagi.');
+                // Error message is shown by auth.setPin
             }
         }
 
-        function handleChangePin(event) {
+        async function handleChangePin(event) {
             event.preventDefault();
             const oldPin = document.getElementById('old-pin').value;
             const newPin = document.getElementById('new-pin-change').value;
             const confirmPin = document.getElementById('confirm-pin-change').value;
             
-            // Verify old PIN
-            const currentPin = localStorage.getItem(`pin_${appState.user.id}`);
-            if (oldPin !== currentPin) {
+            // Verify old PIN by hashing it and comparing with the stored hash
+            const currentPinHash = localStorage.getItem(`pin_${appState.user.id}`);
+            const hashedOldPin = await hasher.hashPin(oldPin, appState.user.id);
+            if (hashedOldPin !== currentPinHash) {
                 showSyncStatus('error', 'PIN lama tidak benar.');
                 return;
             }
@@ -4841,12 +4959,13 @@
                 return;
             }
             
-            if (auth.setPin(newPin)) {
-                showSyncStatus('success', 'PIN berhasil diubah!');
+            const success = await auth.setPin(newPin);
+            if (success) {
+                showSyncStatus('success', 'PIN berhasil diubah & disinkronisasi!');
                 event.target.closest('.fixed').remove();
                 render();
             } else {
-                showSyncStatus('error', 'Gagal mengubah PIN. Silakan coba lagi.');
+                // Error message is shown by auth.setPin
             }
         }
 
@@ -4856,8 +4975,9 @@
                 message: 'Akun Anda akan menjadi kurang aman dan dapat diakses tanpa PIN. Apakah Anda yakin?',
                 confirmText: 'Ya, Hapus PIN',
                 isDestructive: true,
-                onConfirm: () => {
-                    if (auth.removePin()) {
+                onConfirm: async () => {
+                    const success = await auth.removePin();
+                    if (success) {
                         showSyncStatus('success', 'PIN keamanan berhasil dihapus.');
                         render();
                     }
@@ -5033,7 +5153,20 @@
                 return;
             }
             
-            const allUsers = ['demo@frugal.com', 'user@example.com', 'test@budget.com'];
+            // Get all users dynamically
+            const allUsers = [];
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key && key.startsWith('pin_')) {
+                    const emailParts = key.replace('pin_', '').split('_');
+                    if (emailParts.length >= 3) {
+                        const reconstructedEmail = emailParts[0] + '@' + emailParts.slice(1, -1).join('.') + '.' + emailParts[emailParts.length - 1];
+                        if (!allUsers.includes(reconstructedEmail)) {
+                            allUsers.push(reconstructedEmail);
+                        }
+                    }
+                }
+            }
             const allData = {};
             
             allUsers.forEach(email => {
@@ -5171,14 +5304,13 @@
             }
             
             try {
+                const hashedPin = await hasher.hashPin(pin, userId);
+
                 // Always save to localStorage for the PIN system to work
-                localStorage.setItem(`pin_${userId}`, pin);
+                localStorage.setItem(`pin_${userId}`, hashedPin);
                 if (name) {
                     localStorage.setItem(`profile_${userId}`, JSON.stringify({ name, currency: 'IDR', theme: 'light' }));
                 }
-                localStorage.setItem(`transactions_${userId}`, '[]');
-                localStorage.setItem(`budgets_${userId}`, '[]');
-                localStorage.setItem(`goals_${userId}`, '[]');
 
                 // If Supabase is used, create the user there as well
                 if (useSupabase) {
@@ -5186,7 +5318,8 @@
                     const { data, error } = await db.createUser({
                         id: userId,
                         email: email,
-                        name: name || null,
+                        name: name || null, // Store name in Supabase
+                        pin: hashedPin, // Store hashed PIN in Supabase
                         role: 'user'
                     });
 
@@ -5210,16 +5343,30 @@
             }
         }
 
-        function resetUserPin(email) {
+        async function resetUserPin(email) {
             showConfirmModal({
                 title: 'Reset PIN Pengguna?',
                 message: `Anda akan mereset PIN untuk pengguna ${email} menjadi "000000".`,
                 confirmText: 'Ya, Reset PIN',
-                onConfirm: () => {
+                onConfirm: async () => {
                     if (appState.user?.role !== 'admin') return;
                     const userId = email.replace(/[@.]/g, '_');
-                    localStorage.setItem(`pin_${userId}`, '000000');
-                    showSyncStatus('success', `PIN user ${email} berhasil direset ke 000000`);
+                    const pin = '000000';
+                    
+                    try {
+                        const hashedPin = await hasher.hashPin(pin, userId);
+                        localStorage.setItem(`pin_${userId}`, hashedPin);
+
+                        if (useSupabase) {
+                            const { error } = await db.updateUser(userId, { pin: hashedPin });
+                            if (error) throw new Error(error.message);
+                        }
+
+                        showSyncStatus('success', `PIN user ${email} berhasil direset ke "000000"`);
+                    } catch (error) {
+                        console.error('Error resetting PIN:', error);
+                        showSyncStatus('error', 'Gagal mereset PIN.');
+                    }
                 }
             });
         }
@@ -5260,6 +5407,12 @@
                 return;
             }
             
+            const isAdminUser = email === 'admin@frugal.com';
+            if (isAdminUser) {
+                showSyncStatus('error', 'Akun admin utama tidak dapat dihapus!');
+                return;
+            }
+
             const isDefaultUser = ['demo@frugal.com', 'user@example.com', 'test@budget.com'].includes(email);
             if (isDefaultUser) {
                 showSyncStatus('error', 'User default tidak dapat dihapus!');
@@ -5271,19 +5424,68 @@
                 message: `PERINGATAN!\n\nAnda akan menghapus pengguna ${email} dan SEMUA datanya secara permanen.\n\nTindakan ini tidak dapat dibatalkan.`,
                 confirmText: 'Ya, Hapus Pengguna Ini',
                 isDestructive: true,
-                onConfirm: () => {
+                onConfirm: async () => {
                     if (appState.user?.role !== 'admin') return;
                     const userId = email.replace(/[@.]/g, '_');
                     
-                    // Remove all user data
+                    // Remove all user data from localStorage
                     localStorage.removeItem(`pin_${userId}`);
                     localStorage.removeItem(`transactions_${userId}`);
                     localStorage.removeItem(`budgets_${userId}`);
                     localStorage.removeItem(`goals_${userId}`);
                     localStorage.removeItem(`profile_${userId}`);
+                    localStorage.removeItem(`receivables_${userId}`);
+                    localStorage.removeItem(`debts_${userId}`);
+                    
+                    // Remove user from Supabase
+                    if (useSupabase) {
+                        const { error } = await db.deleteUser(userId);
+                        if (error) {
+                            console.error('Supabase user deletion error:', error);
+                            showSyncStatus('error', 'Gagal hapus user di cloud.');
+                            // Note: We don't rollback a delete action.
+                        }
+                    }
                     
                     showSyncStatus('success', `User ${email} dan semua datanya berhasil dihapus!`);
                     render(); // Refresh the page
+                }
+            });
+        }
+
+        async function promoteToAdmin(email) {
+            if (appState.user?.role !== 'admin') {
+                showSyncStatus('error', 'Akses ditolak. Hanya admin yang dapat melakukan tindakan ini.');
+                return;
+            }
+
+            if (email === 'admin@frugal.com') {
+                showSyncStatus('info', 'User ini sudah menjadi admin utama.');
+                return;
+            }
+
+            showConfirmModal({
+                title: 'Jadikan Admin?',
+                message: `Apakah Anda yakin ingin menjadikan ${email} sebagai admin?\n\nPengguna ini akan memiliki akses penuh ke semua fitur administrasi.`,
+                confirmText: 'Ya, Jadikan Admin',
+                onConfirm: async () => {
+                    const userId = email.replace(/[@.]/g, '_');
+                    
+                    if (useSupabase) {
+                        console.log(`👑 Promoting user ${email} to admin...`);
+                        const { data, error } = await db.updateUser(userId, { role: 'admin' });
+
+                        if (error) {
+                            console.error('❌ Supabase role update error:', error);
+                            showSyncStatus('error', 'Gagal memperbarui peran pengguna di cloud.');
+                        } else {
+                            console.log('✅ User role updated in Supabase:', data);
+                            showSyncStatus('success', `Peran untuk ${email} berhasil diubah menjadi admin!`);
+                            render(); 
+                        }
+                    } else {
+                        showSyncStatus('error', 'Fitur ini memerlukan koneksi Supabase.');
+                    }
                 }
             });
         }
@@ -5853,11 +6055,12 @@
 
         // Initialize default PINs on app startup
         function initializeDefaultPins() {
+            // These are pre-hashed values.
             const defaultUsers = [
-                { email: 'demo@frugal.com', pin: '123456' },
-                { email: 'admin@frugal.com', pin: '999999' },
-                { email: 'user@example.com', pin: '000000' },
-                { email: 'test@budget.com', pin: '000000' }
+                { email: 'demo@frugal.com', pinHash: 'c1c224b03cd9bc7b6a86d77f5dace40191766c485cd55dc48caf9ac873335d6f' }, // PIN: 123456
+                { email: 'admin@frugal.com', pinHash: '1304a79c9c649961c3238353a387515885363c3743638203158671f932e01361' }, // PIN: 999999
+                { email: 'user@example.com', pinHash: 'd4067933e56d3916f5187499595252c5ac744153302671563f1395701693121a' }, // PIN: 000000
+                { email: 'test@budget.com', pinHash: '73946f7a554c70699ac5b803b8743545190c4b7e9d3d91c62f12354999815033' }  // PIN: 000000
             ];
             
             defaultUsers.forEach(user => {
@@ -5865,8 +6068,8 @@
                 const existingPin = localStorage.getItem(`pin_${userId}`);
                 
                 if (!existingPin) {
-                    localStorage.setItem(`pin_${userId}`, user.pin);
-                    console.log(`🔑 Initialized PIN for ${user.email}: ${user.pin}`);
+                    localStorage.setItem(`pin_${userId}`, user.pinHash);
+                    console.log(`🔑 Initialized hashed PIN for ${user.email}.`);
                 } else {
                     console.log(`✅ PIN already exists for ${user.email}: ${existingPin}`);
                 }
