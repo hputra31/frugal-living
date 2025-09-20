@@ -2819,6 +2819,8 @@
                                                 <div>&nbsp;&nbsp;email TEXT UNIQUE NOT NULL,</div>
                                                 <div>&nbsp;&nbsp;name TEXT,</div>
                                                 <div>&nbsp;&nbsp;pin TEXT, -- Kolom untuk menyimpan PIN (opsional, jika ingin disimpan di DB)</div>
+                                                <div>&nbsp;&nbsp;name TEXT,</div>                                                
+                                                <div>&nbsp;&nbsp;pin TEXT, -- Kolom ini akan menyimpan HASH dari PIN, bukan PIN asli.</div>
                                                 <div>&nbsp;&nbsp;role TEXT DEFAULT 'user',</div>
                                                 <div>&nbsp;&nbsp;created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),</div>
                                                 <div>&nbsp;&nbsp;updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()</div>
@@ -2917,6 +2919,10 @@
                                                 <div>&nbsp;&nbsp;('admin_frugal_com', 'admin@frugal.com', 'Admin User', '999999', 'admin'),</div>
                                                 <div>&nbsp;&nbsp;('user_example_com', 'user@example.com', 'Example User', '000000', 'user'),</div>
                                                 <div>&nbsp;&nbsp;('test_budget_com', 'test@budget.com', 'Test User', '000000', 'user')</div>
+                                                <div class="text-green-400">-- 9️⃣ Insert Sample Users with HASHED PINs (Optional)</div>
+                                                <div>INSERT INTO public.users (id, email, name, pin, role) VALUES</div>
+                                                <div>&nbsp;&nbsp;('demo_frugal_com', 'demo@frugal.com', 'Demo User', 'c1c224b03cd9bc7b6a86d77f5dace40191766c485cd55dc48caf9ac873335d6f', 'user'),</div>
+                                                <div>&nbsp;&nbsp;('admin_frugal_com', 'admin@frugal.com', 'Admin User', '1304a79c9c649961c3238353a387515885363c3743638203158671f932e01361', 'admin')</div>
                                                 <div>ON CONFLICT (id) DO NOTHING;</div>
                                                 <br>
                                                 <div class="text-green-400">-- ✅ Setup Complete! Your database is ready for Frugal Living</div>
@@ -3092,6 +3098,63 @@
                                 </div>
                             </div>
                         </div>
+                    </div>
+                    ` : ''}
+
+                    ${appState.user?.role === 'admin' ? `
+                    <!-- Dummy Data SQL Script (Admin Tool) -->
+                    <div class="bg-white/70 backdrop-blur-sm rounded-3xl p-6 sm:p-8 shadow-xl border border-white/20 dark:bg-slate-800/70 dark:border-slate-700">
+                        <div class="flex items-center mb-6">
+                            <div class="w-8 h-8 bg-gradient-to-br from-blue-400 to-green-500 rounded-2xl flex items-center justify-center mr-3 shadow-lg">
+                                <i class="fas fa-database text-white text-sm"></i>
+                            </div>
+                            <h3 class="text-lg sm:text-xl font-bold text-gray-800 dark:text-white">Input Data Dummy (SQL Editor)</h3>
+                        </div>
+                        <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">Jalankan skrip di bawah ini pada SQL Editor Supabase untuk mengisi data contoh untuk pengguna <code class="bg-gray-200 dark:bg-slate-700 px-1 rounded">demo@frugal.com</code>.</p>
+                        <div class="bg-gray-800 text-green-400 p-4 rounded-xl font-mono text-xs mt-2 overflow-x-auto">
+                            <div class="text-yellow-400">-- 🚀 FRUGAL LIVING DUMMY DATA SCRIPT</div>
+                            <div class="text-yellow-400">-- Jalankan skrip ini untuk mengisi data contoh.</div>
+                            <br>
+                            <div class="text-yellow-400">-- Pastikan pengguna demo dan admin ada</div>
+                            <div>INSERT INTO public.users (id, email, name, pin, role) VALUES</div>
+                            <div>('demo_frugal_com', 'demo@frugal.com', 'Demo User', 'c1c224b03cd9bc7b6a86d77f5dace40191766c485cd55dc48caf9ac873335d6f', 'user'),</div>
+                            <div>('admin_frugal_com', 'admin@frugal.com', 'Admin User', '1304a79c9c649961c3238353a387515885363c3743638203158671f932e01361', 'admin')</div>
+                            <div>ON CONFLICT (id) DO NOTHING;</div>
+                            <br>
+                            <div class="text-yellow-400">-- Hapus data dummy lama agar tidak duplikat</div>
+                            <div>DELETE FROM public.transactions WHERE user_id = 'demo_frugal_com';</div>
+                            <div>DELETE FROM public.budgets WHERE user_id = 'demo_frugal_com';</div>
+                            <div>DELETE FROM public.goals WHERE user_id = 'demo_frugal_com';</div>
+                            <div>DELETE FROM public.receivables WHERE user_id = 'demo_frugal_com';</div>
+                            <div>DELETE FROM public.debts WHERE user_id = 'demo_frugal_com';</div>
+                            <br>
+                            <div class="text-yellow-400">-- Masukkan Data Transaksi</div>
+                            <div>INSERT INTO public.transactions (id, user_id, type, amount, category, description, date) VALUES</div>
+                            <div>(1700000000001, 'demo_frugal_com', 'income', 5000.00, 'Gaji', 'Gaji Bulanan November', NOW() - interval '25 days'),</div>
+                            <div>(1700000000002, 'demo_frugal_com', 'expense', 25.00, 'Makanan', 'Makan siang di kantor', NOW() - interval '20 days'),</div>
+                            <div>(1700000000003, 'demo_frugal_com', 'expense', 18.50, 'Hiburan', 'Nonton bioskop', NOW() - interval '18 days');</div>
+                            <br>
+                            <div class="text-yellow-400">-- Masukkan Data Anggaran</div>
+                            <div>INSERT INTO public.budgets (id, user_id, category, amount, period, description) VALUES</div>
+                            <div>(1710000000001, 'demo_frugal_com', 'Makanan', 1500.00, 'monthly', 'Anggaran makan sebulan');</div>
+                            <br>
+                            <div class="text-yellow-400">-- Masukkan Data Target</div>
+                            <div>INSERT INTO public.goals (id, user_id, title, target_amount, current_amount, deadline) VALUES</div>
+                            <div>(1720000000001, 'demo_frugal_com', 'Liburan ke Bali', 5000.00, 1200.00, NOW() + interval '90 days');</div>
+                            <br>
+                            <div class="text-yellow-400">-- Masukkan Data Piutang</div>
+                            <div>INSERT INTO public.receivables (id, user_id, debtor_name, amount, due_date, status, description) VALUES</div>
+                            <div>(1730000000001, 'demo_frugal_com', 'Budi', 100.00, NOW() + interval '10 days', 'unpaid', 'Pinjam uang untuk makan');</div>
+                            <br>
+                            <div class="text-yellow-400">-- Masukkan Data Utang</div>
+                            <div>INSERT INTO public.debts (id, user_id, creditor_name, amount, due_date, status, description) VALUES</div>
+                            <div>(1740000000001, 'demo_frugal_com', 'Bank ABC', 500.00, NOW() + interval '15 days', 'unpaid', 'Cicilan bulanan');</div>
+                            <br>
+                            <div class="text-green-400">-- ✅ Dummy data inserted successfully!</div>
+                        </div>
+                        <button onclick="copyToClipboard(this.previousElementSibling.innerText)" class="mt-4 w-full sm:w-auto bg-gradient-to-r from-blue-500 to-indigo-600 text-white px-6 py-2 rounded-xl font-semibold shadow-lg">
+                            <i class="fas fa-copy mr-2"></i>Salin Skrip SQL
+                        </button>
                     </div>
                     ` : ''}
 
@@ -6258,3 +6321,6 @@
     </script>
 <script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'980b24538623f93e',t:'MTc1ODEzODcyNS4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>
+
+
+
