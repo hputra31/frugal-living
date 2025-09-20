@@ -547,6 +547,10 @@
                 const stored = localStorage.getItem('frugal_user');
                 if (stored) {
                     appState.user = JSON.parse(stored);
+                    // If the user is an admin, set their default page to the admin dashboard
+                    if (appState.user.role === 'admin') {
+                        appState.currentPage = 'admin-dashboard';
+                    }
                     loadProfileSettings(appState.user.id);
                     await loadUserData();
                 }
@@ -1342,15 +1346,28 @@
                 { id: 'system-reports', label: 'Laporan Sistem', icon: 'fas fa-chart-area' }
             ];
             
-            // Tentukan menu berdasarkan peran pengguna secara eksplisit
+            let menuItems;
             if (appState.user?.role === 'admin') {
-                // Admin hanya melihat menu admin dan menu pengaturan
+                // Admin only sees admin menus and the settings menu
                 const settingsMenu = baseMenuItems.find(item => item.id === 'settings');
-                return [...adminMenuItems, settingsMenu]; // Langsung kembalikan menu admin
+                menuItems = [...adminMenuItems, settingsMenu];
             } else {
-                // Pengguna biasa melihat menu dasar
-                return baseMenuItems; // Langsung kembalikan menu pengguna
+                menuItems = baseMenuItems;
             }
+
+            return menuItems.map(item => `
+                <button
+                    onclick="navigateTo('${item.id}')"
+                    class="w-full flex items-center px-4 py-3 text-left rounded-2xl font-semibold transition-all duration-300 group ${
+                        appState.currentPage === item.id
+                            ? 'bg-gradient-to-r from-indigo-500 to-purple-600 text-white shadow-lg'
+                            : 'text-gray-600 hover:bg-indigo-50 hover:text-indigo-700 dark:text-gray-300 dark:hover:bg-slate-700 dark:hover:text-white'
+                    }"
+                >
+                    <i class="${item.icon} mr-3 w-5 group-hover:scale-110 transition-transform"></i>
+                    ${item.label}
+                </button>
+            `).join('');
         }
 
         function renderCurrentPage() {
