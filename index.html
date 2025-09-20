@@ -396,11 +396,21 @@
                 return { success: true };
             },
             logout: () => {
+                if (appState.user) {
+                    const userId = appState.user.id;
+                    // Hapus semua data spesifik pengguna dari localStorage saat logout
+                    localStorage.removeItem(`transactions_${userId}`);
+                    localStorage.removeItem(`budgets_${userId}`);
+                    localStorage.removeItem(`goals_${userId}`);
+                    localStorage.removeItem(`receivables_${userId}`);
+                    localStorage.removeItem(`debts_${userId}`);
+                    localStorage.removeItem(`profile_${userId}`);
+                }
                 appState.user = null;
                 localStorage.removeItem('frugal_user');
-                appState.transactions = [];
-                appState.budgets = [];
-                appState.goals = [];
+                // Reset seluruh appState ke kondisi awal
+                Object.assign(appState, { transactions: [], budgets: [], goals: [], receivables: [], debts: [] });
+                console.log('✅ Logout successful, user data cleared from localStorage.');
             },
             init: async () => {
                 const stored = localStorage.getItem('frugal_user');
@@ -610,6 +620,8 @@
                     if (error) {
                         showSyncStatus('error', 'Gagal sync anggaran ke cloud');
                         console.error('Supabase budget create error:', error);
+                        appState.budgets.pop(); // Rollback jika Supabase gagal
+                        localStorage.setItem(`budgets_${userId}`, JSON.stringify(appState.budgets));
                     } else {
                         showSyncStatus('success', 'Anggaran dibuat & disinkronisasi');
                     }
@@ -620,6 +632,8 @@
                 console.error('Error creating budget:', error);
                 showSyncStatus('error', 'Gagal membuat anggaran');
                 appState.budgets.pop(); // Rollback
+            } finally {
+                render();
             }
         }
 
@@ -641,12 +655,17 @@
                     if (error) {
                         showSyncStatus('error', 'Gagal sync update anggaran');
                         console.error('Supabase budget update error:', error);
+                        // Rollback jika Supabase gagal
+                        appState.budgets[budgetIndex] = originalBudget;
+                        localStorage.setItem(`budgets_${userId}`, JSON.stringify(appState.budgets));
                     }
                 }
             } catch (error) {
                 console.error('Error updating budget:', error);
                 showSyncStatus('error', 'Gagal memperbarui anggaran');
                 appState.budgets[budgetIndex] = originalBudget; // Rollback
+            } finally {
+                render();
             }
         }
 
@@ -656,13 +675,25 @@
                 message: 'Apakah Anda yakin ingin menghapus anggaran ini?',
                 confirmText: 'Ya, Hapus',
                 isDestructive: true,
-                onConfirm: () => {
+                onConfirm: async () => {
                     if (!appState.user) return;
                     const userId = appState.user.id;
+                    const originalBudgets = [...appState.budgets];
                     appState.budgets = appState.budgets.filter(b => b.id !== budgetId);
+                    render(); // Optimistic UI update
                     localStorage.setItem(`budgets_${userId}`, JSON.stringify(appState.budgets));
-                    showSyncStatus('success', 'Anggaran berhasil dihapus.');
-                    render();
+
+                    if (useSupabase) {
+                        const { error } = await db.deleteBudget(budgetId);
+                        if (error) {
+                            console.error('❌ Error deleting budget:', error);
+                            showSyncStatus('error', 'Gagal menghapus. Data dikembalikan.');
+                            appState.budgets = originalBudgets; // Rollback
+                            render();
+                        } else {
+                            showSyncStatus('success', 'Anggaran dihapus & disinkronisasi.');
+                        }
+                    }
                 }
             });
         }
@@ -686,6 +717,8 @@
                     if (error) {
                         showSyncStatus('error', 'Gagal sync piutang ke cloud');
                         console.error('Supabase receivable create error:', error);
+                        appState.receivables.pop(); // Rollback jika Supabase gagal
+                        localStorage.setItem(`receivables_${userId}`, JSON.stringify(appState.receivables));
                     } else {
                         showSyncStatus('success', 'Piutang dicatat & disinkronisasi');
                     }
@@ -696,6 +729,8 @@
                 console.error('Error creating receivable:', error);
                 showSyncStatus('error', 'Gagal mencatat piutang');
                 appState.receivables.pop(); // Rollback
+            } finally {
+                render();
             }
         }
 
@@ -718,6 +753,9 @@
                     if (error) {
                         showSyncStatus('error', 'Gagal sync update status piutang');
                         console.error('Supabase receivable update error:', error);
+                        // Rollback jika Supabase gagal
+                        appState.receivables[receivableIndex] = originalReceivable;
+                        localStorage.setItem(`receivables_${userId}`, JSON.stringify(appState.receivables));
                     } else {
                         showSyncStatus('success', 'Status piutang diperbarui & disinkronisasi');
                     }
@@ -841,14 +879,16 @@
                 onConfirm: async () => {
                     if (!appState.user) return;
                     const userId = appState.user.id;
+                    const originalDebts = [...appState.debts];
                     appState.debts = appState.debts.filter(d => d.id !== debtId);
+                    render(); // Optimistic UI update
                     localStorage.setItem(`debts_${userId}`, JSON.stringify(appState.debts));
 
                     if (useSupabase) {
-                        await db.deleteDebt(debtId);
+                        const { error } = await db.deleteDebt(debtId);
+                        if (error) { appState.debts = originalDebts; render(); } // Rollback
                     }
                     showSyncStatus('success', 'Utang berhasil dihapus.');
-                    render();
                 }
             });
         }
@@ -871,6 +911,8 @@
                     if (error) {
                         showSyncStatus('error', 'Gagal sync target ke cloud');
                         console.error('Supabase goal create error:', error);
+                        appState.goals.pop(); // Rollback jika Supabase gagal
+                        localStorage.setItem(`goals_${userId}`, JSON.stringify(appState.goals));
                     } else {
                         showSyncStatus('success', 'Target dibuat & disinkronisasi');
                     }
@@ -881,6 +923,8 @@
                 console.error('Error creating goal:', error);
                 showSyncStatus('error', 'Gagal membuat target');
                 appState.goals.pop(); // Rollback
+            } finally {
+                render();
             }
         }
 
@@ -3897,7 +3941,7 @@
             
             createBudget(budget);
             hideAddBudgetForm();
-            render(); // createBudget will re-render after async operations
+            // render() dipanggil di dalam createBudget
         }
 
         function showRecordPaymentForBudget(budgetId) {
@@ -4059,7 +4103,7 @@
             };
             updateBudget(budgetId, updates);
             document.getElementById('edit-budget-modal').remove();
-            render();
+            // render() dipanggil di dalam updateBudget
         }
 
         function handleRecordPayment(event, budgetId) {
@@ -4078,7 +4122,7 @@
             saveTransaction(transaction);
             const modalId = `payment-modal-${budgetId}`;
             document.getElementById(modalId)?.remove();
-            render();
+            // render() dipanggil di dalam saveTransaction
         }
 
         function handleDeleteBudget(budgetId) {
@@ -4105,7 +4149,7 @@
             
             createReceivable(receivable); // Changed from saveReceivable to match convention
             hideAddReceivableForm();
-            render();
+            // render() dipanggil di dalam createReceivable
         }
 
         function handleAddDebt(event) {
@@ -4358,7 +4402,7 @@
             
             createGoal(goal);
             hideAddGoalForm();
-            render();
+            // render() dipanggil di dalam createGoal
         }
 
         function handleAddFundsToGoal(goalId) {
@@ -4526,6 +4570,8 @@
 
             // Close the modal
             document.getElementById('edit-goal-modal').remove();
+            // Panggil render secara eksplisit karena updateGoal tidak selalu memanggilnya
+            // (tergantung pada alur error handling)
             render();
         }
 
@@ -4547,6 +4593,9 @@
                     if (error) {
                         showSyncStatus('error', 'Gagal sync update target');
                         console.error('Supabase goal update error:', error);
+                        // Rollback jika Supabase gagal
+                        appState.goals[goalIndex] = originalGoal;
+                        localStorage.setItem(`goals_${userId}`, JSON.stringify(appState.goals));
                     }
                 }
                 showSyncStatus('success', 'Target berhasil diperbarui.');
@@ -4554,6 +4603,8 @@
                 console.error('Error updating goal:', error);
                 showSyncStatus('error', 'Gagal memperbarui target');
                 appState.goals[goalIndex] = originalGoal; // Rollback
+            } finally {
+                render();
             }
         }
 
@@ -4569,9 +4620,9 @@
                         localStorage.removeItem(`transactions_${userId}`);
                         localStorage.removeItem(`budgets_${userId}`);
                         localStorage.removeItem(`goals_${userId}`);
-                        appState.transactions = [];
-                        appState.budgets = [];
-                        appState.goals = [];
+                        localStorage.removeItem(`receivables_${userId}`);
+                        localStorage.removeItem(`debts_${userId}`);
+                        Object.assign(appState, { transactions: [], budgets: [], goals: [], receivables: [], debts: [] });
                         render();
                         showSyncStatus('success', 'Semua data berhasil dihapus.');
                     }
