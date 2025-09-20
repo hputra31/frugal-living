@@ -149,6 +149,52 @@
         // To keep track of active real-time subscriptions
         let activeSubscriptions = [];
 
+        // Function to unsubscribe from all active channels
+        async function unsubscribeAll() {
+            if (activeSubscriptions.length > 0) {
+                console.log('👋 Unsubscribing from all real-time channels...');
+                try {
+                    await Promise.all(activeSubscriptions.map(sub => supabase.removeChannel(sub)));
+                    activeSubscriptions = [];
+                    console.log('✅ All channels unsubscribed.');
+                } catch (error) {
+                    console.error('❌ Error unsubscribing from channels:', error);
+                }
+            }
+        }
+
+        // Function to set up real-time subscriptions
+        async function setupRealtimeSubscriptions(userId) {
+            // First, ensure any old subscriptions are removed before creating new ones
+            await unsubscribeAll();
+
+            console.log('📡 Setting up real-time subscriptions for user:', userId);
+
+            const handleChanges = (payload) => {
+                console.log('🔄 Real-time change detected:', payload);
+                // A simple way to handle changes is to just reload all data and re-render
+                loadUserData();
+                render();
+                showSyncStatus('info', 'Data diperbarui secara real-time.');
+            };
+
+            const tables = ['transactions', 'budgets', 'goals', 'receivables', 'debts'];
+
+            tables.forEach(table => {
+                const channel = supabase.channel(`public:${table}:user_id=eq.${userId}`)
+                    .on('postgres_changes', { event: '*', schema: 'public', table: table, filter: `user_id=eq.${userId}` }, handleChanges)
+                    .subscribe((status, err) => {
+                        if (status === 'SUBSCRIBED') {
+                            console.log(`✅ Subscribed to ${table} changes for user ${userId}`);
+                        }
+                        if (status === 'CHANNEL_ERROR') {
+                            console.error(`❌ Subscription error on ${table}:`, err);
+                        }
+                    });
+                activeSubscriptions.push(channel);
+            });
+        }
+
         // Database functions
         const db = {
             // User functions
@@ -476,7 +522,7 @@
                 console.log(`✅ Login successful for: ${email} with role: ${userRole}`);
                 return { success: true };
             },
-            logout: async () => {
+            logout: async function() { // Menggunakan function agar 'this' merujuk ke object auth
                 if (useSupabase) {
                     await unsubscribeAll();
                 }
@@ -495,6 +541,7 @@
                 // Reset seluruh appState ke kondisi awal
                 Object.assign(appState, { transactions: [], budgets: [], goals: [], receivables: [], debts: [] });
                 console.log('✅ Logout successful, user data cleared from localStorage.');
+                navigateTo('overview'); // Arahkan ke halaman login
             },
             init: async () => {
                 const stored = localStorage.getItem('frugal_user');
@@ -1295,28 +1342,15 @@
                 { id: 'system-reports', label: 'Laporan Sistem', icon: 'fas fa-chart-area' }
             ];
             
-            let menuItems;
+            // Tentukan menu berdasarkan peran pengguna secara eksplisit
             if (appState.user?.role === 'admin') {
-                // Admin only sees admin menus and the settings menu
+                // Admin hanya melihat menu admin dan menu pengaturan
                 const settingsMenu = baseMenuItems.find(item => item.id === 'settings');
-                menuItems = [...adminMenuItems, settingsMenu];
+                return [...adminMenuItems, settingsMenu]; // Langsung kembalikan menu admin
             } else {
-                menuItems = baseMenuItems;
+                // Pengguna biasa melihat menu dasar
+                return baseMenuItems; // Langsung kembalikan menu pengguna
             }
-
-            return menuItems.map(item => `
-                <button
-                    onclick="navigateTo('${item.id}')"
-                    class="w-full flex items-center px-4 py-3 text-left rounded-2xl font-semibold transition-all duration-300 group ${
-                        appState.currentPage === item.id
-                            ? 'bg-gradient-to-r from-indigo-500 to-purple-600 text-white shadow-lg'
-                            : 'text-gray-600 hover:bg-indigo-50 hover:text-indigo-700 dark:text-gray-300 dark:hover:bg-slate-700 dark:hover:text-white'
-                    }"
-                >
-                    <i class="${item.icon} mr-3 w-5 group-hover:scale-110 transition-transform"></i>
-                    ${item.label}
-                </button>
-            `).join('');
         }
 
         function renderCurrentPage() {
@@ -4157,12 +4191,8 @@
             }
         }
 
-        function handleLogout() {
-            auth.logout();
-            appState.currentPage = 'overview';
-            appState.sidebarOpen = false;
-            appState.showQuickAdd = false;
-            render();
+        async function handleLogout() {
+            await auth.logout(); // Cukup panggil fungsi logout, karena navigasi sudah ditangani di dalamnya.
         }
 
         function navigateTo(page) {
@@ -5671,6 +5701,52 @@
                         showSyncStatus('error', 'Fitur ini memerlukan koneksi Supabase.');
                     }
                 }
+            });
+        }
+
+        async function handleManualHash() {
+            const emailInput = document.getElementById('manual-hash-email');
+            const pinInput = document.getElementById('manual-hash-pin');
+            const outputContainer = document.getElementById('manual-hash-output-container');
+            const outputElement = document.getElementById('manual-hash-output');
+
+            if (!emailInput || !pinInput || !outputContainer || !outputElement) {
+                console.error('Hasher elements not found in the DOM.');
+                return;
+            }
+
+            const email = emailInput.value.trim();
+            const pin = pinInput.value.trim();
+
+            if (!email || !pin) {
+                showSyncStatus('error', 'Email dan PIN harus diisi untuk generate hash.');
+                return;
+            }
+            
+            if (pin.length !== 6) {
+                showSyncStatus('error', 'PIN harus 6 digit.');
+                return;
+            }
+
+            try {
+                const userId = email.replace(/[@.]/g, '_'); // The salt is the user ID derived from the email
+                const hashedPin = await hasher.hashPin(pin, userId);
+                
+                outputElement.textContent = hashedPin;
+                outputContainer.classList.remove('hidden');
+                
+                showSyncStatus('success', 'Hash berhasil digenerate!');
+            } catch (error) {
+                console.error('Error generating manual hash:', error);
+                showSyncStatus('error', 'Gagal generate hash. Lihat konsol.');
+            }
+        }
+
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text).then(() => {
+                showSyncStatus('success', 'Hash disalin ke clipboard!');
+            }, () => {
+                showSyncStatus('error', 'Gagal menyalin hash.');
             });
         }
 
