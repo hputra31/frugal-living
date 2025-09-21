@@ -4183,6 +4183,7 @@
             event.preventDefault();
             const pin = document.getElementById('modal-pin-input').value;
             const errorDiv = document.getElementById('pin-error');
+            const submitButton = event.target.querySelector('button[type="submit"]');
             
             if (!pin || pin.length !== 6) {
                 errorDiv.querySelector('span').textContent = 'PIN harus 6 digit angka';
@@ -4190,8 +4191,18 @@
                 return;
             }
             
+            // Show loading state and disable button
+            const originalButtonContent = submitButton.innerHTML;
+            submitButton.innerHTML = `<i class="fas fa-spinner fa-spin mr-2"></i>Mengecek & Sinkronisasi...`;
+            submitButton.disabled = true;
+            errorDiv.classList.add('hidden');
+
             const result = await auth.login(email, pin);
             
+            // Restore button state
+            submitButton.innerHTML = originalButtonContent;
+            submitButton.disabled = false;
+
             if (result.success) {
                 event.target.closest('.fixed').remove();
                 loadUserData();
