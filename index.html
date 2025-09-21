@@ -1888,12 +1888,11 @@
                 ? `<div class="flex items-center space-x-2 bg-green-100 dark:bg-green-500/20 px-3 py-1 rounded-full"><div class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div><span class="text-xs font-medium text-green-700 dark:text-green-300">Tersinkronisasi</span></div>`
                 : `<div class="flex items-center space-x-2 bg-yellow-100 dark:bg-yellow-500/20 px-3 py-1 rounded-full"><div class="w-2 h-2 bg-yellow-500 rounded-full"></div><span class="text-xs font-medium text-yellow-700 dark:text-yellow-300">Mode Lokal</span></div>`;
 
-            const totalUnpaid = appState.receivables
+            const totalOutstanding = appState.receivables
                 .filter(r => r.status === 'unpaid')
-                .reduce((sum, r) => sum + r.amount, 0);
-            const totalPaid = appState.receivables
-                .filter(r => r.status === 'paid')
-                .reduce((sum, r) => sum + r.amount, 0);
+                .reduce((sum, r) => sum + (r.target_amount - r.current_amount), 0);
+            const totalReceived = appState.receivables
+                .reduce((sum, r) => sum + r.current_amount, 0);
 
             return `
                 <div class="space-y-6 fade-in">
@@ -1916,8 +1915,8 @@
                         <div class="bg-white/70 dark:bg-slate-800/70 backdrop-blur-sm rounded-3xl p-6 shadow-xl border border-white/20 dark:border-slate-700">
                             <div class="flex items-center justify-between">
                                 <div>
-                                    <p class="text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">Total Piutang (Belum Lunas)</p>
-                                    <p class="text-2xl font-bold text-orange-600 dark:text-orange-400">Rp ${(totalUnpaid * 1000).toLocaleString('id-ID')}</p>
+                                    <p class="text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">Sisa Piutang</p>
+                                    <p class="text-2xl font-bold text-orange-600 dark:text-orange-400">Rp ${(totalOutstanding * 1000).toLocaleString('id-ID')}</p>
                                 </div>
                                 <div class="bg-gradient-to-br from-orange-400 to-red-500 p-4 rounded-2xl shadow-lg">
                                     <i class="fas fa-hourglass-half text-white text-xl"></i>
@@ -1927,8 +1926,8 @@
                         <div class="bg-white/70 dark:bg-slate-800/70 backdrop-blur-sm rounded-3xl p-6 shadow-xl border border-white/20 dark:border-slate-700">
                             <div class="flex items-center justify-between">
                                 <div>
-                                    <p class="text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">Total Sudah Dibayar</p>
-                                    <p class="text-2xl font-bold text-green-600 dark:text-green-400">Rp ${(totalPaid * 1000).toLocaleString('id-ID')}</p>
+                                    <p class="text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">Total Diterima</p>
+                                    <p class="text-2xl font-bold text-green-600 dark:text-green-400">Rp ${(totalReceived * 1000).toLocaleString('id-ID')}</p>
                                 </div>
                                 <div class="bg-gradient-to-br from-green-400 to-emerald-500 p-4 rounded-2xl shadow-lg">
                                     <i class="fas fa-check-circle text-white text-xl"></i>
@@ -1962,12 +1961,14 @@
                     <!-- Receivables List -->
                     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                         ${appState.receivables.sort((a, b) => new Date(a.due_date) - new Date(b.due_date)).map(receivable => {
+                            const progress = (receivable.current_amount / receivable.target_amount) * 100;
                             const isPaid = receivable.status === 'paid';
                             const dueDate = new Date(receivable.due_date);
                             const today = new Date();
                             today.setHours(0,0,0,0);
                             const isOverdue = !isPaid && dueDate < today;
                             const daysDiff = Math.ceil((dueDate - today) / (1000 * 60 * 60 * 24));
+                            const progressColor = progress >= 100 ? 'green' : progress > 50 ? 'blue' : 'yellow';
 
                             return `
                                 <div class="bg-white/70 dark:bg-slate-800/70 backdrop-blur-sm rounded-3xl p-6 shadow-xl border border-white/20 dark:border-slate-700 flex flex-col ${isPaid ? 'opacity-60' : ''}">
@@ -1976,13 +1977,32 @@
                                         <span class="text-xs px-2 py-1 rounded-full font-medium ${isPaid ? 'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-300' : isOverdue ? 'bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-300' : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-500/20 dark:text-yellow-300'}">${isPaid ? 'Lunas' : isOverdue ? 'Terlewat' : `${daysDiff} hari lagi`}</span>
                                     </div>
                                     <div class="flex-grow space-y-3">
-                                        <p class="text-2xl font-bold text-gray-800 dark:text-gray-100">Rp ${(receivable.amount * 1000).toLocaleString('id-ID')}</p>
+                                        <div class="flex justify-between items-baseline">
+                                            <p class="text-2xl font-bold text-gray-800 dark:text-gray-100">Rp ${(receivable.target_amount * 1000).toLocaleString('id-ID')}</p>
+                                            <p class="text-sm font-medium text-gray-500 dark:text-gray-400">${progress.toFixed(0)}%</p>
+                                        </div>
+                                        <div class="w-full bg-gray-200 dark:bg-slate-700 rounded-full h-2.5">
+                                            <div class="bg-gradient-to-r from-${progressColor}-400 to-${progressColor}-500 h-2.5 rounded-full" style="width: ${Math.min(progress, 100)}%"></div>
+                                        </div>
+                                        <div class="text-xs text-gray-500 dark:text-gray-400">
+                                            Terbayar: Rp ${(receivable.current_amount * 1000).toLocaleString('id-ID')}
+                                        </div>
                                         <p class="text-sm text-gray-500 dark:text-gray-400">Jatuh Tempo: ${dueDate.toLocaleDateString('id-ID')}</p>
                                         ${receivable.description ? `<p class="text-xs text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-slate-700/50 p-2 rounded-lg">${receivable.description}</p>` : ''}
                                     </div>
                                     <div class="mt-4 pt-4 border-t border-gray-200/80 dark:border-slate-700/80 flex items-center gap-2">
-                                        ${!isPaid ? `<button onclick="handleMarkAsPaid(${receivable.id})" class="flex-1 bg-green-100 hover:bg-green-200 text-green-700 font-semibold px-3 py-2 rounded-xl transition-all duration-300 text-sm"><i class="fas fa-check mr-1"></i> Tandai Lunas</button>` : ''}
-                                        <button onclick="handleDeleteReceivable(${receivable.id})" class="flex-1 bg-red-100 hover:bg-red-200 text-red-700 font-semibold px-3 py-2 rounded-xl transition-all duration-300 text-sm"><i class="fas fa-trash mr-1"></i> Hapus</button>
+                                        ${!isPaid ? `
+                                            <div class="flex-grow relative">
+                                                <input type="number" step="1000" id="installment-amount-${receivable.id}" class="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500 text-sm" placeholder="Jumlah Cicilan">
+                                                <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">Rp</span>
+                                            </div>
+                                            <button onclick="handleAddInstallment(${receivable.id})" class="bg-green-500 hover:bg-green-600 text-white font-semibold px-3 py-2 rounded-xl transition-all duration-300 flex-shrink-0">
+                                                <i class="fas fa-plus"></i>
+                                            </button>
+                                        ` : ''}
+                                        <button onclick="handleDeleteReceivable(${receivable.id})" class="bg-red-100 hover:bg-red-200 text-red-700 font-semibold px-3 py-2 rounded-xl transition-all duration-300 text-sm ${isPaid ? 'w-full' : ''}">
+                                            <i class="fas fa-trash mr-1"></i> Hapus
+                                        </button>
                                     </div>
                                 </div>
                             `;
@@ -2886,8 +2906,9 @@
                                                 <div>CREATE TABLE IF NOT EXISTS receivables (</div>
                                                 <div>&nbsp;&nbsp;id BIGINT PRIMARY KEY,</div>
                                                 <div>&nbsp;&nbsp;user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,</div>
-                                                <div>&nbsp;&nbsp;debtor_name TEXT NOT NULL,</div>
-                                                <div>&nbsp;&nbsp;amount DECIMAL(15,2) NOT NULL,</div>
+                                                <div>&nbsp;&nbsp;debtor_name TEXT NOT NULL,</div>                                                
+                                                <div>&nbsp;&nbsp;target_amount DECIMAL(15,2) NOT NULL,</div>
+                                                <div>&nbsp;&nbsp;current_amount DECIMAL(15,2) NOT NULL DEFAULT 0,</div>
                                                 <div>&nbsp;&nbsp;due_date DATE NOT NULL,</div>
                                                 <div>&nbsp;&nbsp;description TEXT,</div>
                                                 <div>&nbsp;&nbsp;status TEXT NOT NULL DEFAULT 'unpaid' CHECK (status IN ('unpaid', 'paid')),</div>
@@ -2899,8 +2920,9 @@
                                                 <div>CREATE TABLE IF NOT EXISTS debts (</div>
                                                 <div>&nbsp;&nbsp;id BIGINT PRIMARY KEY,</div>
                                                 <div>&nbsp;&nbsp;user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,</div>
-                                                <div>&nbsp;&nbsp;creditor_name TEXT NOT NULL,</div>
-                                                <div>&nbsp;&nbsp;amount DECIMAL(15,2) NOT NULL,</div>
+                                                <div>&nbsp;&nbsp;creditor_name TEXT NOT NULL,</div>                                                
+                                                <div>&nbsp;&nbsp;target_amount DECIMAL(15,2) NOT NULL,</div>
+                                                <div>&nbsp;&nbsp;current_amount DECIMAL(15,2) NOT NULL DEFAULT 0,</div>
                                                 <div>&nbsp;&nbsp;due_date DATE NOT NULL,</div>
                                                 <div>&nbsp;&nbsp;description TEXT,</div>
                                                 <div>&nbsp;&nbsp;status TEXT NOT NULL DEFAULT 'unpaid' CHECK (status IN ('unpaid', 'paid')),</div>
@@ -4442,13 +4464,56 @@
             
             const receivable = {
                 debtor_name: document.getElementById('receivable-debtor').value.trim(),
-                amount: parseFloat(document.getElementById('receivable-amount').value) / 1000,
+                target_amount: parseFloat(document.getElementById('receivable-amount').value) / 1000,
+                current_amount: 0,
                 due_date: document.getElementById('receivable-due-date').value,
                 description: document.getElementById('receivable-description').value.trim()
             };
             
             createReceivable(receivable); // Changed from saveReceivable to match convention
             hideAddReceivableForm();
+        }
+
+        async function handleAddInstallment(receivableId) {
+            const amountInput = document.getElementById(`installment-amount-${receivableId}`);
+            const amount = parseFloat(amountInput.value) / 1000;
+
+            if (isNaN(amount) || amount <= 0) {
+                showSyncStatus('error', 'Masukkan jumlah cicilan yang valid.');
+                return;
+            }
+
+            const receivable = appState.receivables.find(r => r.id === receivableId);
+            if (!receivable) return;
+
+            const newCurrentAmount = receivable.current_amount + amount;
+            const updates = {
+                current_amount: newCurrentAmount,
+                status: newCurrentAmount >= receivable.target_amount ? 'paid' : 'unpaid'
+            };
+
+            // Create a corresponding income transaction
+            const transaction = {
+                type: 'income',
+                amount: amount,
+                category: 'Piutang',
+                description: `Cicilan dari ${receivable.debtor_name}`,
+                date: new Date().toISOString().split('T')[0]
+            };
+
+            // Use Promise.all to run both operations concurrently
+            try {
+                await Promise.all([
+                    db.updateReceivable(receivableId, updates),
+                    saveTransaction(transaction) // saveTransaction already handles Supabase
+                ]);
+                showSyncStatus('success', `Cicilan Rp ${(amount * 1000).toLocaleString('id-ID')} diterima.`);
+                await loadUserData(); // Reload all data to ensure consistency
+                render();
+            } catch (error) {
+                showSyncStatus('error', 'Gagal menyimpan cicilan.');
+                console.error("Error adding installment:", error);
+            }
         }
 
         function handleAddDebt(event) {
@@ -4606,17 +4671,6 @@
                     showSyncStatus('success', 'Transaksi berhasil diperbarui & disinkronisasi.');
                 }
             }
-        }
-
-        async function handleMarkAsPaid(receivableId) {
-            showConfirmModal({
-                title: 'Tandai Lunas?',
-                message: 'Apakah Anda yakin ingin menandai piutang ini sebagai lunas?',
-                confirmText: 'Ya, Lunas',
-                onConfirm: async () => {
-                    await updateReceivableStatus(receivableId, 'paid');
-                }
-            });
         }
 
         function handleDeleteReceivable(receivableId) {
