@@ -1,0 +1,12 @@
+{
+  "rewrites": [
+    {
+      "source": "/",
+      "destination": "/frugal-living-app/landing.html"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/frugal-living-app/$1"
+    }
+  ]
+}
