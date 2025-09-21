@@ -174,12 +174,6 @@
                 currentPage: 1,
                 usersPerPage: 5, // Show 5 users per page
                 totalUsers: 0
-            },
-            systemStats: { // For admin dashboard
-                totalUsers: 0,
-                totalTransactions: 0,
-                totalVolume: 0,
-                topActiveUsers: []
             }
         };
 
@@ -286,25 +280,6 @@
                     .select('*')
                     .order('created_at', { ascending: true });
                 return { data, error };
-            },
-            
-            async getSystemStats() {
-                const { data, error } = await supabase
-                    .from('users_with_stats')
-                    .select('transaction_count, total_volume, email')
-                    .order('transaction_count', { ascending: false });
-
-                if (error) return { data: null, error };
-
-                const stats = data.reduce((acc, user) => {
-                    acc.totalTransactions += user.transaction_count || 0;
-                    acc.totalVolume += user.total_volume || 0;
-                    return acc;
-                }, { totalTransactions: 0, totalVolume: 0 });
-
-                stats.totalUsers = data.length;
-                stats.topActiveUsers = data.slice(0, 5);
-                return { data: stats, error: null };
             },
 
             async getTransactionsFromLastMonths(months = 6) {
@@ -493,56 +468,6 @@
             }
         };
 
-        // --- Custom Category Helpers ---
-        function getUniqueCategories(type = 'expense') {
-            const categories = new Set();
-            
-            // Default categories
-            const defaultExpense = ['Makanan', 'Transportasi', 'Belanja', 'Tagihan', 'Hiburan', 'Kesehatan', 'Pendidikan', 'Lainnya'];
-            const defaultIncome = ['Gaji', 'Freelance', 'Investasi', 'Hadiah', 'Bisnis', 'Lainnya'];
-
-            if (type === 'expense') {
-                defaultExpense.forEach(c => categories.add(c));
-            } else {
-                defaultIncome.forEach(c => categories.add(c));
-            }
-
-            // Add categories from transactions
-            appState.transactions.filter(t => t.type === type).forEach(t => categories.add(t.category));
-            
-            // Add categories from budgets (always expense)
-            if (type === 'expense') {
-                appState.budgets.forEach(b => categories.add(b.category));
-            }
-            
-            return Array.from(categories).sort();
-        }
-
-        function getCategoryEmoji(category) {
-            const emojiMap = {
-                'Makanan': '🍽️', 'Transportasi': '🚗', 'Belanja': '🛍️', 'Tagihan': '📄', 'Hiburan': '🎬', 'Kesehatan': '🏥', 'Pendidikan': '📚',
-                'Gaji': '💰', 'Freelance': '💻', 'Investasi': '📈', 'Hadiah': '🎁', 'Bisnis': '🏪',
-                'Lainnya': '📦'
-            };
-            return emojiMap[category] || '✨'; // Default emoji
-        }
-
-        function toggleNewCategoryInput(selectedValue, containerId, inputId) {
-            const container = document.getElementById(containerId);
-            const input = document.getElementById(inputId);
-            if (container && input) {
-                if (selectedValue === '--add-new--') {
-                    container.classList.remove('hidden');
-                    input.required = true;
-                    input.focus();
-                } else {
-                    container.classList.add('hidden');
-                    input.required = false;
-                    input.value = '';
-                }
-            }
-        }
-
         // Hashing utility using Web Crypto API for enhanced security
         const hasher = {
             async hashPin(pin, salt) {
@@ -666,28 +591,12 @@
             }
         };
 
-        // Favicon Management
-        function setFavicon(color) {
-            const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><path fill="${color}" d="M512 160c-17.7 0-32 14.3-32 32s14.3 32 32 32s32-14.3 32-32s-14.3-32-32-32zm-40.1 48.1c-17.6-4.4-29.9-21.5-25.5-39.1s21.5-29.9 39.1-25.5s29.9 21.5 25.5 39.1s-21.5 29.9-39.1 25.5zM320 64c0-35.3-28.7-64-64-64S192 28.7 192 64H320zm-64 32c17.7 0 32-14.3 32-32s-14.3-32-32-32s-32 14.3-32 32s14.3 32 32 32zM160 128H32C14.3 128 0 142.3 0 160V352c0 17.7 14.3 32 32 32h96v32c0 17.7 14.3 32 32 32s32-14.3 32-32V384h32c70.7 0 128-57.3 128-128c0-44.2-22.5-83.4-56.7-106.8c-1.4-1-2.8-2-4.2-3.1c-18.2-14.1-40-22.1-63.1-22.1H160zm0 64h96c17.7 0 32 14.3 32 32s-14.3 32-32 32H160v64h96c17.7 0 32 14.3 32 32s-14.3 32-32 32H160V192z"/></svg>`;
-            const encodedSvg = encodeURIComponent(svg);
-            
-            let link = document.querySelector("link[rel*='icon']");
-            if (!link) {
-                link = document.createElement('link');
-                link.rel = 'icon';
-                document.getElementsByTagName('head')[0].appendChild(link);
-            }
-            link.href = `data:image/svg+xml,${encodedSvg}`;
-        }
-
         // Theme Management
         function applyTheme(theme) {
             if (theme === 'dark' || (theme === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
                 document.documentElement.classList.add('dark');
-                setFavicon('#a5b4fc'); // Light indigo for dark mode
             } else {
                 document.documentElement.classList.remove('dark');
-                setFavicon('#4f46e5'); // Original indigo for light mode
             }
         }
 
@@ -735,15 +644,6 @@
                 
                 await setupRealtimeSubscriptions(userId);
 
-                // If user is admin, fetch system-wide stats
-                if (appState.user.role === 'admin' && useSupabase) {
-                    console.log('👑 Admin detected, fetching system stats...');
-                    const { data: stats, error: statsError } = await db.getSystemStats();
-                    if (statsError) {
-                        console.error('❌ Error fetching system stats:', statsError);
-                    }
-                    appState.systemStats = stats || { totalUsers: 0, totalTransactions: 0, totalVolume: 0, topActiveUsers: [] };
-                }
             } catch (error) {
                 console.error('❌ Fatal Error loading from Supabase:', error);
                 showSyncStatus('error', 'Gagal memuat data dari cloud. Coba refresh.');
@@ -753,19 +653,20 @@
         async function saveTransaction(transaction) {
             if (!appState.user) return;
             
+            transaction.id = Date.now();
             transaction.user_id = appState.user.id;
             transaction.created_at = new Date().toISOString();
             
             try {
                 if (useSupabase) {
                     console.log('💾 Saving transaction to Supabase...');
-                    const { data: newTransaction, error } = await db.createTransaction(transaction);
+                    const { data, error } = await db.createTransaction(transaction);
                     if (error) {
                         console.error('❌ Supabase save error:', error);
                         showSyncStatus('error', 'Tersimpan lokal, gagal sync ke cloud');
                     } else {
-                        console.log('✅ Transaction saved to Supabase:', newTransaction);
-                        appState.transactions.unshift(newTransaction[0]); // Optimistic UI: Add to local state
+                        console.log('✅ Transaction saved to Supabase:', data);
+                        await loadUserData(); // Reload data to get the latest state
                         render();
                         showSyncStatus('success', 'Transaksi tersimpan & tersinkronisasi');
                     }
@@ -801,21 +702,17 @@
         async function createBudget(budget) {
             if (!appState.user) return;
             
+            budget.id = Date.now();
             budget.user_id = appState.user.id;
             budget.created_at = new Date().toISOString();
 
-            // Tampilkan loading indicator
-            showSyncStatus('info', 'Menyimpan anggaran...');
-
             try {
                 if (useSupabase) {
-                    const { data: newBudget, error } = await db.createBudget(budget);
+                    const { data, error } = await db.createBudget(budget);
                     if (error) {
-                        // Memberikan pesan error yang lebih spesifik
-                        showSyncStatus('error', `Gagal: ${error.message}`);
-                        console.error('Supabase budget create error:', error.message);
+                        showSyncStatus('error', 'Gagal sync anggaran ke cloud');
+                        console.error('Supabase budget create error:', error);
                     } else {
-                        // Cara terbaik: Muat ulang semua data untuk memastikan konsistensi
                         await loadUserData();
                         render();
                         showSyncStatus('success', 'Anggaran dibuat & disinkronisasi');
@@ -823,7 +720,9 @@
                 }
             } catch (error) {
                 console.error('Error creating budget:', error);
-                showSyncStatus('error', 'Terjadi kesalahan saat membuat anggaran');
+                showSyncStatus('error', 'Gagal membuat anggaran');
+            } finally {
+                render();
             }
         }
 
@@ -920,18 +819,19 @@
         async function createDebt(debt) {
             if (!appState.user) return;
             
+            debt.id = Date.now();
             debt.user_id = appState.user.id;
             debt.status = 'unpaid';
             debt.created_at = new Date().toISOString();
             
             try {
                 if (useSupabase) {
-                    const { data: newDebt, error } = await db.createDebt(debt);
+                    const { data, error } = await db.createDebt(debt);
                     if (error) {
                         showSyncStatus('error', 'Gagal sync utang ke cloud');
                         console.error('Supabase debt create error:', error);
                     } else {
-                        appState.debts.push(newDebt[0]);
+                        await loadUserData();
                         render();
                         showSyncStatus('success', 'Utang dicatat & disinkronisasi');
                     }
@@ -939,6 +839,8 @@
             } catch (error) {
                 console.error('Error creating debt:', error);
                 showSyncStatus('error', 'Gagal mencatat utang');
+            } finally {
+                render();
             }
         }
 
@@ -988,17 +890,18 @@
         async function createGoal(goal) {
             if (!appState.user) return;
             
+            goal.id = Date.now();
             goal.user_id = appState.user.id;
             goal.created_at = new Date().toISOString();
 
             try {
                 if (useSupabase) {
-                    const { data: newGoal, error } = await db.createGoal(goal);
+                    const { data, error } = await db.createGoal(goal);
                     if (error) {
                         showSyncStatus('error', 'Gagal sync target ke cloud');
                         console.error('Supabase goal create error:', error);
                     } else {
-                        appState.goals.push(newGoal[0]);
+                        await loadUserData();
                         render();
                         showSyncStatus('success', 'Target dibuat & disinkronisasi');
                     }
@@ -1006,6 +909,8 @@
             } catch (error) {
                 console.error('Error creating goal:', error);
                 showSyncStatus('error', 'Gagal membuat target');
+            } finally {
+                render();
             }
         }
 
@@ -1630,8 +1535,6 @@
                 ? `<div class="flex items-center space-x-2 bg-green-100 dark:bg-green-500/20 px-3 py-1 rounded-full"><div class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div><span class="text-xs font-medium text-green-700 dark:text-green-300">Tersinkronisasi</span></div>`
                 : `<div class="flex items-center space-x-2 bg-yellow-100 dark:bg-yellow-500/20 px-3 py-1 rounded-full"><div class="w-2 h-2 bg-yellow-500 rounded-full"></div><span class="text-xs font-medium text-yellow-700 dark:text-yellow-300">Mode Lokal</span></div>`;
 
-            const budgetCategories = getUniqueCategories('expense');
-
             return `
                 <div class="space-y-6 fade-in">
                     <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
@@ -1718,8 +1621,6 @@
                 ? `<div class="flex items-center space-x-2 bg-green-100 dark:bg-green-500/20 px-3 py-1 rounded-full"><div class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div><span class="text-xs font-medium text-green-700 dark:text-green-300">Tersinkronisasi</span></div>`
                 : `<div class="flex items-center space-x-2 bg-yellow-100 dark:bg-yellow-500/20 px-3 py-1 rounded-full"><div class="w-2 h-2 bg-yellow-500 rounded-full"></div><span class="text-xs font-medium text-yellow-700 dark:text-yellow-300">Mode Lokal</span></div>`;
 
-            const budgetCategories = getUniqueCategories('expense');
-
             return `
                 <div class="space-y-6 fade-in">
                     <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
@@ -1742,18 +1643,25 @@
                             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <select
                                     id="budget-category"
-                                    class="w-full px-4 py-3 border-2 border-gray-200 rounded-2xl focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 font-medium bg-white/80 backdrop-blur-sm transition-all duration-300 text-sm sm:text-base shadow-sm dark:bg-slate-700 dark:border-slate-600 dark:text-white"
+                                    class="w-full px-4 py-3 border-2 border-gray-200 rounded-2xl focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 font-medium bg-white/80 backdrop-blur-sm transition-all duration-300 text-sm sm:text-base shadow-sm dark:bg-slate-700 dark:border-slate-600 dark:text-white dark:placeholder-gray-400"
                                     required
                                 >
                                     <option value="">✨ Pilih Kategori Anggaran</option>
-                                    ${budgetCategories.map(cat => `<option value="${cat}">${getCategoryEmoji(cat)} ${cat}</option>`).join('')}
+                                    <option value="Makanan">🍽️ Makanan & Minuman</option>
+                                    <option value="Transportasi">🚗 Transportasi</option>
+                                    <option value="Belanja">🛍️ Belanja</option>
+                                    <option value="Tagihan">📄 Tagihan & Utilitas</option>
+                                    <option value="Hiburan">🎬 Hiburan</option>
+                                    <option value="Kesehatan">🏥 Kesehatan</option>
+                                    <option value="Pendidikan">📚 Pendidikan</option>
+                                    <option value="Lainnya">📦 Lainnya</option>
                                 </select>
                                 <input
                                     type="number"
                                     step="1000"
                                     id="budget-amount"
                                     placeholder="Jumlah Anggaran (Rp)"
-                                    class="w-full px-4 py-3 border-2 border-gray-200 rounded-2xl focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 font-medium bg-white/80 backdrop-blur-sm transition-all duration-300 text-sm sm:text-base shadow-sm dark:bg-slate-700 dark:border-slate-600 dark:text-white"
+                                    class="w-full px-4 py-3 border-2 border-gray-200 rounded-2xl focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 font-medium bg-white/80 backdrop-blur-sm transition-all duration-300 text-sm sm:text-base shadow-sm dark:bg-slate-700 dark:border-slate-600 dark:text-white dark:placeholder-gray-400"
                                     required
                                 />
                             </div>
@@ -1795,32 +1703,9 @@
 
                     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                         ${appState.budgets.map(budget => {
-                            const today = new Date();
-                            const transactionsForCategory = appState.transactions.filter(t => t.type === 'expense' && t.category === budget.category);
-                            let usedAmount = 0;
-
-                            if (budget.period === 'monthly') {
-                                const currentYear = today.getFullYear();
-                                const currentMonth = today.getMonth();
-                                usedAmount = transactionsForCategory.filter(t => {
-                                    const d = new Date(t.date);
-                                    return d.getFullYear() === currentYear && d.getMonth() === currentMonth;
-                                }).reduce((sum, t) => sum + t.amount, 0);
-                            } else if (budget.period === 'yearly') {
-                                const currentYear = today.getFullYear();
-                                usedAmount = transactionsForCategory.filter(t => new Date(t.date).getFullYear() === currentYear).reduce((sum, t) => sum + t.amount, 0);
-                            } else if (budget.period === 'weekly') {
-                                const todayForWeek = new Date(); // Use a new instance to avoid side effects
-                                const firstDayOfWeek = new Date(todayForWeek.setDate(todayForWeek.getDate() - todayForWeek.getDay()));
-                                firstDayOfWeek.setHours(0, 0, 0, 0);
-                                const lastDayOfWeek = new Date(firstDayOfWeek);
-                                lastDayOfWeek.setDate(lastDayOfWeek.getDate() + 6);
-                                lastDayOfWeek.setHours(23, 59, 59, 999);
-                                usedAmount = transactionsForCategory.filter(t => {
-                                    const d = new Date(t.date);
-                                    return d >= firstDayOfWeek && d <= lastDayOfWeek;
-                                }).reduce((sum, t) => sum + t.amount, 0);
-                            }
+                            const usedAmount = appState.transactions
+                                .filter(t => t.type === 'expense' && t.category === budget.category)
+                                .reduce((sum, t) => sum + t.amount, 0);
                             const progress = budget.amount > 0 ? (usedAmount / budget.amount) * 100 : 0;
                             const remaining = budget.amount - usedAmount;
                             const progressColor = progress > 100 ? 'red' : progress > 75 ? 'yellow' : 'blue';
@@ -1854,7 +1739,7 @@
                                             <button onclick="showEditBudgetForm(${budget.id})" class="flex-1 bg-yellow-100 hover:bg-yellow-200 text-yellow-700 font-semibold px-3 py-2 rounded-xl transition-all duration-300 text-sm">
                                                 <i class="fas fa-edit mr-1"></i> Edit
                                             </button>
-                                            <button onclick="deleteBudget(${budget.id})" class="flex-1 bg-red-100 hover:bg-red-200 text-red-700 font-semibold px-3 py-2 rounded-xl transition-all duration-300 text-sm">
+                                            <button onclick="handleDeleteBudget(${budget.id})" class="flex-1 bg-red-100 hover:bg-red-200 text-red-700 font-semibold px-3 py-2 rounded-xl transition-all duration-300 text-sm">
                                                 <i class="fas fa-trash mr-1"></i> Hapus
                                             </button>
                                         </div>
@@ -1888,11 +1773,12 @@
                 ? `<div class="flex items-center space-x-2 bg-green-100 dark:bg-green-500/20 px-3 py-1 rounded-full"><div class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div><span class="text-xs font-medium text-green-700 dark:text-green-300">Tersinkronisasi</span></div>`
                 : `<div class="flex items-center space-x-2 bg-yellow-100 dark:bg-yellow-500/20 px-3 py-1 rounded-full"><div class="w-2 h-2 bg-yellow-500 rounded-full"></div><span class="text-xs font-medium text-yellow-700 dark:text-yellow-300">Mode Lokal</span></div>`;
 
-            const totalOutstanding = appState.receivables
+            const totalUnpaid = appState.receivables
                 .filter(r => r.status === 'unpaid')
-                .reduce((sum, r) => sum + (r.target_amount - r.current_amount), 0);
-            const totalReceived = appState.receivables
-                .reduce((sum, r) => sum + r.current_amount, 0);
+                .reduce((sum, r) => sum + r.amount, 0);
+            const totalPaid = appState.receivables
+                .filter(r => r.status === 'paid')
+                .reduce((sum, r) => sum + r.amount, 0);
 
             return `
                 <div class="space-y-6 fade-in">
@@ -1915,8 +1801,8 @@
                         <div class="bg-white/70 dark:bg-slate-800/70 backdrop-blur-sm rounded-3xl p-6 shadow-xl border border-white/20 dark:border-slate-700">
                             <div class="flex items-center justify-between">
                                 <div>
-                                    <p class="text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">Sisa Piutang</p>
-                                    <p class="text-2xl font-bold text-orange-600 dark:text-orange-400">Rp ${(totalOutstanding * 1000).toLocaleString('id-ID')}</p>
+                                    <p class="text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">Total Piutang (Belum Lunas)</p>
+                                    <p class="text-2xl font-bold text-orange-600 dark:text-orange-400">Rp ${(totalUnpaid * 1000).toLocaleString('id-ID')}</p>
                                 </div>
                                 <div class="bg-gradient-to-br from-orange-400 to-red-500 p-4 rounded-2xl shadow-lg">
                                     <i class="fas fa-hourglass-half text-white text-xl"></i>
@@ -1926,8 +1812,8 @@
                         <div class="bg-white/70 dark:bg-slate-800/70 backdrop-blur-sm rounded-3xl p-6 shadow-xl border border-white/20 dark:border-slate-700">
                             <div class="flex items-center justify-between">
                                 <div>
-                                    <p class="text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">Total Diterima</p>
-                                    <p class="text-2xl font-bold text-green-600 dark:text-green-400">Rp ${(totalReceived * 1000).toLocaleString('id-ID')}</p>
+                                    <p class="text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">Total Sudah Dibayar</p>
+                                    <p class="text-2xl font-bold text-green-600 dark:text-green-400">Rp ${(totalPaid * 1000).toLocaleString('id-ID')}</p>
                                 </div>
                                 <div class="bg-gradient-to-br from-green-400 to-emerald-500 p-4 rounded-2xl shadow-lg">
                                     <i class="fas fa-check-circle text-white text-xl"></i>
@@ -1961,14 +1847,12 @@
                     <!-- Receivables List -->
                     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                         ${appState.receivables.sort((a, b) => new Date(a.due_date) - new Date(b.due_date)).map(receivable => {
-                            const progress = (receivable.current_amount / receivable.target_amount) * 100;
                             const isPaid = receivable.status === 'paid';
                             const dueDate = new Date(receivable.due_date);
                             const today = new Date();
                             today.setHours(0,0,0,0);
                             const isOverdue = !isPaid && dueDate < today;
                             const daysDiff = Math.ceil((dueDate - today) / (1000 * 60 * 60 * 24));
-                            const progressColor = progress >= 100 ? 'green' : progress > 50 ? 'blue' : 'yellow';
 
                             return `
                                 <div class="bg-white/70 dark:bg-slate-800/70 backdrop-blur-sm rounded-3xl p-6 shadow-xl border border-white/20 dark:border-slate-700 flex flex-col ${isPaid ? 'opacity-60' : ''}">
@@ -1977,32 +1861,13 @@
                                         <span class="text-xs px-2 py-1 rounded-full font-medium ${isPaid ? 'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-300' : isOverdue ? 'bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-300' : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-500/20 dark:text-yellow-300'}">${isPaid ? 'Lunas' : isOverdue ? 'Terlewat' : `${daysDiff} hari lagi`}</span>
                                     </div>
                                     <div class="flex-grow space-y-3">
-                                        <div class="flex justify-between items-baseline">
-                                            <p class="text-2xl font-bold text-gray-800 dark:text-gray-100">Rp ${(receivable.target_amount * 1000).toLocaleString('id-ID')}</p>
-                                            <p class="text-sm font-medium text-gray-500 dark:text-gray-400">${progress.toFixed(0)}%</p>
-                                        </div>
-                                        <div class="w-full bg-gray-200 dark:bg-slate-700 rounded-full h-2.5">
-                                            <div class="bg-gradient-to-r from-${progressColor}-400 to-${progressColor}-500 h-2.5 rounded-full" style="width: ${Math.min(progress, 100)}%"></div>
-                                        </div>
-                                        <div class="text-xs text-gray-500 dark:text-gray-400">
-                                            Terbayar: Rp ${(receivable.current_amount * 1000).toLocaleString('id-ID')}
-                                        </div>
+                                        <p class="text-2xl font-bold text-gray-800 dark:text-gray-100">Rp ${(receivable.amount * 1000).toLocaleString('id-ID')}</p>
                                         <p class="text-sm text-gray-500 dark:text-gray-400">Jatuh Tempo: ${dueDate.toLocaleDateString('id-ID')}</p>
                                         ${receivable.description ? `<p class="text-xs text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-slate-700/50 p-2 rounded-lg">${receivable.description}</p>` : ''}
                                     </div>
                                     <div class="mt-4 pt-4 border-t border-gray-200/80 dark:border-slate-700/80 flex items-center gap-2">
-                                        ${!isPaid ? `
-                                            <div class="flex-grow relative">
-                                                <input type="number" step="1000" id="installment-amount-${receivable.id}" class="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500 text-sm" placeholder="Jumlah Cicilan">
-                                                <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">Rp</span>
-                                            </div>
-                                            <button onclick="handleAddInstallment(${receivable.id})" class="bg-green-500 hover:bg-green-600 text-white font-semibold px-3 py-2 rounded-xl transition-all duration-300 flex-shrink-0">
-                                                <i class="fas fa-plus"></i>
-                                            </button>
-                                        ` : ''}
-                                        <button onclick="handleDeleteReceivable(${receivable.id})" class="bg-red-100 hover:bg-red-200 text-red-700 font-semibold px-3 py-2 rounded-xl transition-all duration-300 text-sm ${isPaid ? 'w-full' : ''}">
-                                            <i class="fas fa-trash mr-1"></i> Hapus
-                                        </button>
+                                        ${!isPaid ? `<button onclick="handleMarkAsPaid(${receivable.id})" class="flex-1 bg-green-100 hover:bg-green-200 text-green-700 font-semibold px-3 py-2 rounded-xl transition-all duration-300 text-sm"><i class="fas fa-check mr-1"></i> Tandai Lunas</button>` : ''}
+                                        <button onclick="handleDeleteReceivable(${receivable.id})" class="flex-1 bg-red-100 hover:bg-red-200 text-red-700 font-semibold px-3 py-2 rounded-xl transition-all duration-300 text-sm"><i class="fas fa-trash mr-1"></i> Hapus</button>
                                     </div>
                                 </div>
                             `;
@@ -2123,8 +1988,6 @@
             const syncStatusIndicator = useSupabase 
                 ? `<div class="flex items-center space-x-2 bg-green-100 dark:bg-green-500/20 px-3 py-1 rounded-full"><div class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div><span class="text-xs font-medium text-green-700 dark:text-green-300">Tersinkronisasi</span></div>`
                 : `<div class="flex items-center space-x-2 bg-yellow-100 dark:bg-yellow-500/20 px-3 py-1 rounded-full"><div class="w-2 h-2 bg-yellow-500 rounded-full"></div><span class="text-xs font-medium text-yellow-700 dark:text-yellow-300">Mode Lokal</span></div>`;
-
-            const budgetCategories = getUniqueCategories('expense');
 
             return `
                 <div class="space-y-6 fade-in">
@@ -2867,7 +2730,7 @@
                                                 <br>
                                                 <div class="text-blue-400">-- 2️⃣ Transactions Table</div>
                                                 <div>CREATE TABLE IF NOT EXISTS transactions (</div>
-                                                <div>&nbsp;&nbsp;id BIGSERIAL PRIMARY KEY,</div>
+                                                <div>&nbsp;&nbsp;id BIGINT PRIMARY KEY,</div>
                                                 <div>&nbsp;&nbsp;user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,</div>
                                                 <div>&nbsp;&nbsp;type TEXT NOT NULL CHECK (type IN ('income', 'expense')),</div>
                                                 <div>&nbsp;&nbsp;amount DECIMAL(15,2) NOT NULL CHECK (amount > 0),</div>
@@ -2880,7 +2743,7 @@
                                                 <br>
                                                 <div class="text-blue-400">-- 3️⃣ Budgets Table</div>
                                                 <div>CREATE TABLE IF NOT EXISTS budgets (</div>
-                                                <div>&nbsp;&nbsp;id BIGSERIAL PRIMARY KEY,</div>
+                                                <div>&nbsp;&nbsp;id BIGINT PRIMARY KEY,</div>
                                                 <div>&nbsp;&nbsp;user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,</div>
                                                 <div>&nbsp;&nbsp;category TEXT NOT NULL,</div>
                                                 <div>&nbsp;&nbsp;amount DECIMAL(15,2) NOT NULL CHECK (amount > 0),</div>
@@ -2892,7 +2755,7 @@
                                                 <br>
                                                 <div class="text-blue-400">-- 4️⃣ Goals Table</div>
                                                 <div>CREATE TABLE IF NOT EXISTS goals (</div>
-                                                <div>&nbsp;&nbsp;id BIGSERIAL PRIMARY KEY,</div>
+                                                <div>&nbsp;&nbsp;id BIGINT PRIMARY KEY,</div>
                                                 <div>&nbsp;&nbsp;user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,</div>
                                                 <div>&nbsp;&nbsp;title TEXT NOT NULL,</div>
                                                 <div>&nbsp;&nbsp;target_amount DECIMAL(15,2) NOT NULL CHECK (target_amount > 0),</div>
@@ -2904,11 +2767,10 @@
                                                 <br>
                                                 <div class="text-blue-400">-- 5️⃣ Receivables Table (Piutang)</div>
                                                 <div>CREATE TABLE IF NOT EXISTS receivables (</div>
-                                                <div>&nbsp;&nbsp;id BIGSERIAL PRIMARY KEY,</div>
+                                                <div>&nbsp;&nbsp;id BIGINT PRIMARY KEY,</div>
                                                 <div>&nbsp;&nbsp;user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,</div>
-                                                <div>&nbsp;&nbsp;debtor_name TEXT NOT NULL,</div>                                                
-                                                <div>&nbsp;&nbsp;target_amount DECIMAL(15,2) NOT NULL,</div>
-                                                <div>&nbsp;&nbsp;current_amount DECIMAL(15,2) NOT NULL DEFAULT 0,</div>
+                                                <div>&nbsp;&nbsp;debtor_name TEXT NOT NULL,</div>
+                                                <div>&nbsp;&nbsp;amount DECIMAL(15,2) NOT NULL,</div>
                                                 <div>&nbsp;&nbsp;due_date DATE NOT NULL,</div>
                                                 <div>&nbsp;&nbsp;description TEXT,</div>
                                                 <div>&nbsp;&nbsp;status TEXT NOT NULL DEFAULT 'unpaid' CHECK (status IN ('unpaid', 'paid')),</div>
@@ -2918,11 +2780,10 @@
                                                 <br>
                                                 <div class="text-blue-400">-- 6️⃣ Debts Table (Utang)</div>
                                                 <div>CREATE TABLE IF NOT EXISTS debts (</div>
-                                                <div>&nbsp;&nbsp;id BIGSERIAL PRIMARY KEY,</div>
+                                                <div>&nbsp;&nbsp;id BIGINT PRIMARY KEY,</div>
                                                 <div>&nbsp;&nbsp;user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,</div>
-                                                <div>&nbsp;&nbsp;creditor_name TEXT NOT NULL,</div>                                                
-                                                <div>&nbsp;&nbsp;target_amount DECIMAL(15,2) NOT NULL,</div>
-                                                <div>&nbsp;&nbsp;current_amount DECIMAL(15,2) NOT NULL DEFAULT 0,</div>
+                                                <div>&nbsp;&nbsp;creditor_name TEXT NOT NULL,</div>
+                                                <div>&nbsp;&nbsp;amount DECIMAL(15,2) NOT NULL,</div>
                                                 <div>&nbsp;&nbsp;due_date DATE NOT NULL,</div>
                                                 <div>&nbsp;&nbsp;description TEXT,</div>
                                                 <div>&nbsp;&nbsp;status TEXT NOT NULL DEFAULT 'unpaid' CHECK (status IN ('unpaid', 'paid')),</div>
@@ -2944,29 +2805,15 @@
                                                 <div>ALTER TABLE goals ENABLE ROW LEVEL SECURITY;</div>
                                                 <div>ALTER TABLE receivables ENABLE ROW LEVEL SECURITY;</div>
                                                 <div>ALTER TABLE debts ENABLE ROW LEVEL SECURITY;</div>
-                                                <br>                                                
-                                                <div class="text-orange-400">-- 8️⃣ Create SECURE RLS Policies</div>
-                                                <div class="text-yellow-400">-- This is the most important security step.</div>
-                                                <div class="text-yellow-400">-- It ensures users can only access their own data.</div>
                                                 <br>
-                                                <div class="text-gray-400">-- Drop old insecure policies if they exist</div>
-                                                <div>DROP POLICY IF EXISTS "Users can view own data" ON public.users;</div>
-                                                <div>DROP POLICY IF EXISTS "Users can manage own transactions" ON public.transactions;</div>
-                                                <div>DROP POLICY IF EXISTS "Users can manage own budgets" ON public.budgets;</div>
-                                                <div>DROP POLICY IF EXISTS "Users can manage own goals" ON public.goals;</div>
-                                                <div>DROP POLICY IF EXISTS "Users can manage own receivables" ON public.receivables;</div>
-                                                <div>DROP POLICY IF EXISTS "Users can manage own debts" ON public.debts;</div>
-                                                <br>
-                                                <div class="text-gray-400">-- Create new SECURE policies</div>
-                                                <div>CREATE POLICY "Users can manage their own transactions" ON public.transactions FOR ALL USING (auth.uid()::text = user_id);</div>
-                                                <div>CREATE POLICY "Users can manage their own budgets" ON public.budgets FOR ALL USING (auth.uid()::text = user_id);</div>
-                                                <div>CREATE POLICY "Users can manage their own goals" ON public.goals FOR ALL USING (auth.uid()::text = user_id);</div>
-                                                <div>CREATE POLICY "Users can manage their own receivables" ON public.receivables FOR ALL USING (auth.uid()::text = user_id);</div>
-                                                <div>CREATE POLICY "Users can manage their own debts" ON public.debts FOR ALL USING (auth.uid()::text = user_id);</div>
-                                                <br>
-                                                <div class="text-gray-400">-- Policies for the users table itself</div>
-                                                <div>CREATE POLICY "Users can view their own profile" ON public.users FOR SELECT USING (auth.uid()::text = id);</div>
-                                                <div>CREATE POLICY "Users can update their own profile" ON public.users FOR UPDATE USING (auth.uid()::text = id);</div>
+                                                <div class="text-orange-400">-- 8️⃣ Create RLS Policies (Optional - for enhanced security)</div>
+                                                <div>-- Users can only see their own data</div>
+                                                <div>CREATE POLICY "Users can view own data" ON users FOR ALL USING (true);</div>
+                                                <div>CREATE POLICY "Users can manage own transactions" ON transactions FOR ALL USING (true);</div>
+                                                <div>CREATE POLICY "Users can manage own budgets" ON budgets FOR ALL USING (true);</div>
+                                                <div>CREATE POLICY "Users can manage own goals" ON goals FOR ALL USING (true);</div>
+                                                <div>CREATE POLICY "Users can manage own receivables" ON receivables FOR ALL USING (true);</div>
+                                                <div>CREATE POLICY "Users can manage own debts" ON debts FOR ALL USING (true);</div>
                                                 <br>
                                                 <div class="text-green-400">-- 9️⃣ Insert Sample Users with PINs (Optional)</div>
                                                 <div>INSERT INTO users (id, email, name, pin, role) VALUES</div>
@@ -3291,9 +3138,17 @@
                                         <select
                                             id="quick-category"
                                             class="w-full px-4 sm:px-6 py-4 sm:py-5 border-2 border-gray-200 rounded-2xl focus:ring-4 focus:ring-indigo-500/20 focus:border-indigo-500 font-semibold bg-white/80 backdrop-blur-sm transition-all duration-300 group-hover:border-indigo-300 text-sm sm:text-lg shadow-sm"
-                                            required onchange="toggleNewCategoryInput(this.value, 'quick-new-category-container', 'quick-new-category')"
+                                            required
                                         >
-                                            <!-- Options populated by setTransactionType -->
+                                            <option value="">✨ Pilih Kategori</option>
+                                            <option value="Makanan">🍽️ Makanan</option>
+                                            <option value="Transportasi">🚗 Transport</option>
+                                            <option value="Belanja">🛍️ Belanja</option>
+                                            <option value="Tagihan">📄 Tagihan</option>
+                                            <option value="Hiburan">🎬 Hiburan</option>
+                                            <option value="Kesehatan">🏥 Kesehatan</option>
+                                            <option value="Pendidikan">📚 Pendidikan</option>
+                                            <option value="Lainnya">📦 Lainnya</option>
                                         </select>
                                     </div>
                                     
@@ -3315,17 +3170,6 @@
                                     </div>
                                 </div>
                                 
-                                <!-- New Category Input -->
-                                <div id="quick-new-category-container" class="hidden relative group">
-                                    <label class="block text-xs sm:text-sm font-bold text-gray-700 mb-2 sm:mb-3 flex items-center">
-                                        <div class="w-5 h-5 sm:w-6 sm:h-6 bg-gradient-to-r from-purple-400 to-pink-500 rounded-full flex items-center justify-center mr-2 shadow-lg">
-                                            <i class="fas fa-plus text-white text-xs"></i>
-                                        </div>
-                                        Nama Kategori Baru
-                                    </label>
-                                    <input type="text" id="quick-new-category" placeholder="Contoh: Donasi, Investasi" class="w-full px-4 sm:px-6 py-4 sm:py-5 border-2 border-gray-200 rounded-2xl focus:ring-4 focus:ring-indigo-500/20 focus:border-indigo-500 font-medium bg-white/80 backdrop-blur-sm transition-all duration-300 group-hover:border-indigo-300 text-sm sm:text-lg shadow-sm" />
-                                </div>
-
                                 <!-- Description Input -->
                                 <div class="relative group">
                                     <label class="block text-xs sm:text-sm font-bold text-gray-700 mb-2 sm:mb-3 flex items-center">
@@ -3420,8 +3264,17 @@
 
         // Admin Pages
         function renderAdminDashboard() {
-            const { totalUsers, totalTransactions, totalVolume } = appState.systemStats;
-            const avgTransactionsPerUser = totalUsers > 0 ? Math.round(totalTransactions / totalUsers) : 0;
+            // Data ini akan di-fetch secara async, jadi kita tampilkan placeholder dulu
+            let totalUsers = appState.userManagement.totalUsers || 0;
+            let totalTransactions = 0;
+            let totalAmount = 0;
+            
+            // Simulasi data agregat, idealnya ini dari endpoint Supabase khusus admin
+            appState.transactions.forEach(user => {
+                const userTransactions = []; // Placeholder
+                totalTransactions += userTransactions.length;
+                totalAmount += userTransactions.reduce((sum, t) => sum + (t.amount || 0), 0);
+            });
 
             return `
                 <div class="space-y-6 sm:space-y-8 fade-in">
@@ -3449,7 +3302,7 @@
                             </div>
                             <div>
                                 <p class="text-xs sm:text-sm font-medium text-gray-600 mb-2">Total Pengguna</p>
-                                <p class="text-xl sm:text-2xl font-bold text-blue-600">${appState.userManagement.totalUsers || 0}</p>
+                                <p class="text-xl sm:text-2xl font-bold text-blue-600">${totalUsers}</p>
                                 <p class="text-xs text-blue-500 mt-1">Pengguna aktif</p>
                             </div>
                         </div>
@@ -3475,7 +3328,7 @@
                             </div>
                             <div>
                                 <p class="text-xs sm:text-sm font-medium text-gray-600 mb-2">Total Volume</p>
-                                <p class="text-xl sm:text-2xl font-bold text-purple-600">Rp ${(totalVolume * 1000).toLocaleString('id-ID')}</p>
+                                <p class="text-xl sm:text-2xl font-bold text-purple-600">Rp ${(totalAmount * 1000).toLocaleString('id-ID')}</p>
                                 <p class="text-xs text-purple-500 mt-1">Nilai transaksi</p>
                             </div>
                         </div>
@@ -3488,7 +3341,7 @@
                             </div>
                             <div>
                                 <p class="text-xs sm:text-sm font-medium text-gray-600 mb-2">Rata-rata per User</p>
-                                <p class="text-xl sm:text-2xl font-bold text-orange-600">${avgTransactionsPerUser}</p>
+                                <p class="text-xl sm:text-2xl font-bold text-orange-600">${totalUsers > 0 ? Math.round(totalTransactions / totalUsers) : 0}</p>
                                 <p class="text-xs text-orange-500 mt-1">Transaksi/user</p>
                             </div>
                         </div>
@@ -3730,7 +3583,6 @@
                 setTimeout(() => {
                     const container = document.getElementById(containerId);
                     if (container) container.innerHTML = content;
-                    if (container) container.__users = usersOnPage; // Store users data on the element for later access
                 }, 100);
             })();
 
@@ -3776,7 +3628,28 @@
 
         function renderSystemReports() {
             // --- Data Aggregation ---
-            const { totalUsers, totalTransactions, totalVolume, topActiveUsers } = appState.systemStats;
+            // Data ini idealnya diambil dari fungsi agregat di Supabase.
+            // Untuk saat ini, kita akan simulasikan atau gunakan data yang sudah ada.
+            const totalUsers = appState.userManagement.totalUsers || 0;
+
+            let totalTransactions = 0;
+            let totalVolume = 0;
+            const userActivity = [];
+
+            // Simulasi data, karena kita tidak mengambil data semua user.
+            userActivity.forEach(({ transactionCount, userVolume }) => {
+                
+                totalTransactions += transactionCount;
+                totalVolume += userVolume;
+                
+                userActivity.push({
+                    email: user.email,
+                    transactionCount: transactionCount,
+                    volume: userVolume
+                });
+            });
+
+            const topActiveUsers = userActivity.sort((a, b) => b.transactionCount - a.transactionCount).slice(0, 5);
 
             // --- Dynamic Chart Data Generation ---
             const transactionActivity = {};
@@ -3793,12 +3666,12 @@
                 };
             }
 
-            // TODO: This data should be aggregated from Supabase for a real report. For now, it's a placeholder.
+            // Data ini juga perlu agregasi dari Supabase. Kita simulasikan.
 
             const dynamicTransactionActivityData = Object.values(transactionActivity);
             const maxActivity = Math.max(1, ...dynamicTransactionActivityData.map(d => d.count));
 
-            // Simulated data for user growth chart
+            // Simulated data for charts
             const userGrowthData = [
                 { month: 'Jul', users: 5 }, { month: 'Agu', users: 8 }, { month: 'Sep', users: 12 },
                 { month: 'Okt', users: 15 }, { month: 'Nov', users: totalUsers }
@@ -3866,7 +3739,7 @@
                                     <div class="flex items-center space-x-4 min-w-0">
                                         <span class="font-bold text-gray-500 w-6 text-center">${index + 1}.</span>
                                         <div class="w-10 h-10 bg-gradient-to-br from-indigo-400 to-purple-500 rounded-xl flex items-center justify-center shadow-lg flex-shrink-0">
-                                            <i class="fas fa-user text-white text-sm"></i>
+                                            <i class="fas fa-user text-white"></i>
                                         </div>
                                         <div class="min-w-0">
                                             <p class="font-semibold text-gray-800 truncate" title="${user.email}">${user.email}</p>
@@ -3874,7 +3747,7 @@
                                         </div>
                                     </div>
                                     <div class="text-left sm:text-right pl-12 sm:pl-0">
-                                        <p class="font-bold text-blue-600">${user.transaction_count || 0} Transaksi</p>
+                                        <p class="font-bold text-blue-600">${user.transactionCount} Transaksi</p>
                                     </div>
                                 </div>
                             `).join('')}
@@ -4159,27 +4032,31 @@
             const incomeBtn = document.getElementById('income-btn');
             const categorySelect = document.getElementById('quick-category');
             
-            // Hide the new category input initially and ensure it's not required
-            toggleNewCategoryInput('', 'quick-new-category-container', 'quick-new-category');
-
-            const expenseCategories = getUniqueCategories('expense');
-            const incomeCategories = getUniqueCategories('income');
-
             if (type === 'expense') {
                 expenseBtn.className = 'flex-1 py-4 px-6 rounded-2xl font-bold transition-all duration-300 relative overflow-hidden bg-gradient-to-r from-red-500 to-rose-600 text-white shadow-lg transform scale-105';
                 incomeBtn.className = 'flex-1 py-4 px-6 rounded-2xl font-bold transition-all duration-300 text-gray-600 hover:text-gray-800';
                 categorySelect.innerHTML = `
                     <option value="">✨ Pilih Kategori</option>
-                    ${expenseCategories.map(cat => `<option value="${cat}">${getCategoryEmoji(cat)} ${cat}</option>`).join('')}
-                    <option value="--add-new--">➕ Tambah Kategori Baru...</option>
+                    <option value="Makanan">🍽️ Makanan & Minuman</option>
+                    <option value="Transportasi">🚗 Transportasi</option>
+                    <option value="Belanja">🛍️ Belanja</option>
+                    <option value="Tagihan">📄 Tagihan & Utilitas</option>
+                    <option value="Hiburan">🎬 Hiburan</option>
+                    <option value="Kesehatan">🏥 Kesehatan</option>
+                    <option value="Pendidikan">📚 Pendidikan</option>
+                    <option value="Lainnya">📦 Lainnya</option>
                 `;
             } else {
                 incomeBtn.className = 'flex-1 py-4 px-6 rounded-2xl font-bold transition-all duration-300 relative overflow-hidden bg-gradient-to-r from-green-500 to-emerald-600 text-white shadow-lg transform scale-105';
                 expenseBtn.className = 'flex-1 py-4 px-6 rounded-2xl font-bold transition-all duration-300 text-gray-600 hover:text-gray-800';
                 categorySelect.innerHTML = `
                     <option value="">✨ Pilih Kategori</option>
-                    ${incomeCategories.map(cat => `<option value="${cat}">${getCategoryEmoji(cat)} ${cat}</option>`).join('')}
-                    <option value="--add-new--">➕ Tambah Kategori Baru...</option>
+                    <option value="Gaji">💰 Gaji & Upah</option>
+                    <option value="Freelance">💻 Freelance</option>
+                    <option value="Investasi">📈 Investasi & Dividen</option>
+                    <option value="Hadiah">🎁 Hadiah & Bonus</option>
+                    <option value="Bisnis">🏪 Bisnis Sampingan</option>
+                    <option value="Lainnya">📦 Lainnya</option>
                 `;
             }
         }
@@ -4187,19 +4064,10 @@
         function handleQuickAdd(event) {
             event.preventDefault();
             
-            let category = document.getElementById('quick-category').value.trim();
-            if (category === '--add-new--') {
-                category = document.getElementById('quick-new-category').value.trim();
-                if (!category) {
-                    showSyncStatus('error', 'Nama kategori baru tidak boleh kosong.');
-                    return;
-                }
-            }
-
             const transaction = {
                 type: currentTransactionType,
                 amount: parseFloat(document.getElementById('quick-amount').value) / 1000,
-                category: category,
+                category: document.getElementById('quick-category').value.trim(),
                 description: document.getElementById('quick-description').value.trim(),
                 date: document.getElementById('quick-date').value
             };
@@ -4258,32 +4126,12 @@
 
         function handleAddBudget(event) {
             event.preventDefault();
-
-            const categoryInput = document.getElementById('budget-category');
-            const amountInput = document.getElementById('budget-amount');
-            const descriptionInput = document.getElementById('budget-description');
-            const periodInput = document.getElementById('budget-period');
-
-            const category = categoryInput.value.trim();
-            // Mengirim nilai apa adanya, jangan dibagi 1000 di sini.
-            // Biarkan pengguna memasukkan nilai penuh (misal: 500000) dan pastikan itu angka.
-            const amount = parseFloat(amountInput.value);
-
-            // --- VALIDATION ENHANCED ---
-            if (!category) {
-                showSyncStatus('error', 'Kategori anggaran harus dipilih.');
-                return;
-            }
-            if (isNaN(amount) || amount <= 0) {
-                showSyncStatus('error', 'Jumlah anggaran harus angka positif yang valid.');
-                return;
-            }
-
+            
             const budget = {
-                category: category,
-                amount: amount,
-                description: descriptionInput.value.trim(),
-                period: periodInput.value
+                category: document.getElementById('budget-category').value.trim(),
+                amount: parseFloat(document.getElementById('budget-amount').value) / 1000,
+                description: document.getElementById('budget-description').value.trim(),
+                period: document.getElementById('budget-period').value
             };
             
             createBudget(budget);
@@ -4453,6 +4301,25 @@
             // render() dipanggil di dalam updateBudget
         }
 
+        function handleRecordPayment(event, budgetId) {
+            event.preventDefault();
+            const budget = appState.budgets.find(b => b.id === budgetId);
+            if (!budget) return;
+
+            const transaction = {
+                type: 'expense',
+                amount: parseFloat(document.getElementById(`payment-amount-${budgetId}`).value) / 1000,
+                category: budget.category,
+                description: document.getElementById(`payment-description-${budgetId}`).value,
+                date: document.getElementById(`payment-date-${budgetId}`).value
+            };
+
+            saveTransaction(transaction);
+            const modalId = `payment-modal-${budgetId}`;
+            document.getElementById(modalId)?.remove();
+            // render() dipanggil di dalam saveTransaction
+        }
+
         function handleDeleteBudget(budgetId) {
             deleteBudget(budgetId);
         }
@@ -4470,56 +4337,13 @@
             
             const receivable = {
                 debtor_name: document.getElementById('receivable-debtor').value.trim(),
-                target_amount: parseFloat(document.getElementById('receivable-amount').value) / 1000,
-                current_amount: 0,
+                amount: parseFloat(document.getElementById('receivable-amount').value) / 1000,
                 due_date: document.getElementById('receivable-due-date').value,
                 description: document.getElementById('receivable-description').value.trim()
             };
             
             createReceivable(receivable); // Changed from saveReceivable to match convention
             hideAddReceivableForm();
-        }
-
-        async function handleAddInstallment(receivableId) {
-            const amountInput = document.getElementById(`installment-amount-${receivableId}`);
-            const amount = parseFloat(amountInput.value) / 1000;
-
-            if (isNaN(amount) || amount <= 0) {
-                showSyncStatus('error', 'Masukkan jumlah cicilan yang valid.');
-                return;
-            }
-
-            const receivable = appState.receivables.find(r => r.id === receivableId);
-            if (!receivable) return;
-
-            const newCurrentAmount = receivable.current_amount + amount;
-            const updates = {
-                current_amount: newCurrentAmount,
-                status: newCurrentAmount >= receivable.target_amount ? 'paid' : 'unpaid'
-            };
-
-            // Create a corresponding income transaction
-            const transaction = {
-                type: 'income',
-                amount: amount,
-                category: 'Piutang',
-                description: `Cicilan dari ${receivable.debtor_name}`,
-                date: new Date().toISOString().split('T')[0]
-            };
-
-            // Use Promise.all to run both operations concurrently
-            try {
-                await Promise.all([
-                    db.updateReceivable(receivableId, updates),
-                    saveTransaction(transaction) // saveTransaction already handles Supabase
-                ]);
-                showSyncStatus('success', `Cicilan Rp ${(amount * 1000).toLocaleString('id-ID')} diterima.`);
-                await loadUserData(); // Reload all data to ensure consistency
-                render();
-            } catch (error) {
-                showSyncStatus('error', 'Gagal menyimpan cicilan.');
-                console.error("Error adding installment:", error);
-            }
         }
 
         function handleAddDebt(event) {
@@ -4544,18 +4368,19 @@
         async function createReceivable(receivable) { // Renamed from saveReceivable
             if (!appState.user) return;
             
+            receivable.id = Date.now();
             receivable.user_id = appState.user.id;
             receivable.status = 'unpaid';
             receivable.created_at = new Date().toISOString();
             
             try {
                 if (useSupabase) {
-                    const { data: newReceivable, error } = await db.createReceivable(receivable);
+                    const { data, error } = await db.createReceivable(receivable);
                     if (error) {
                         showSyncStatus('error', 'Gagal sync piutang ke cloud');
                         console.error('Supabase receivable create error:', error);
                     } else {
-                        appState.receivables.push(newReceivable[0]);
+                        await loadUserData();
                         render();
                         showSyncStatus('success', 'Piutang dicatat & disinkronisasi');
                     }
@@ -4563,6 +4388,9 @@
             } catch (error) {
                 console.error('Error creating receivable:', error);
                 showSyncStatus('error', 'Gagal mencatat piutang');
+                appState.receivables.pop(); // Rollback
+            } finally {
+                render();
             }
         }
 
@@ -4673,6 +4501,17 @@
                     showSyncStatus('success', 'Transaksi berhasil diperbarui & disinkronisasi.');
                 }
             }
+        }
+
+        async function handleMarkAsPaid(receivableId) {
+            showConfirmModal({
+                title: 'Tandai Lunas?',
+                message: 'Apakah Anda yakin ingin menandai piutang ini sebagai lunas?',
+                confirmText: 'Ya, Lunas',
+                onConfirm: async () => {
+                    await updateReceivableStatus(receivableId, 'paid');
+                }
+            });
         }
 
         function handleDeleteReceivable(receivableId) {
@@ -5089,7 +4928,8 @@
             const newPin = document.getElementById('new-pin-change').value;
             const confirmPin = document.getElementById('confirm-pin-change').value;
             
-            const currentPinHash = appState.user.pin;
+            // Verify old PIN by hashing it and comparing with the stored hash
+            const currentPinHash = localStorage.getItem(`pin_${appState.user.id}`);
             const hashedOldPin = await hasher.hashPin(oldPin, appState.user.id);
             if (hashedOldPin !== currentPinHash) {
                 showSyncStatus('error', 'PIN lama tidak benar.');
@@ -5439,9 +5279,9 @@
             }
             
             // Check if user already exists
-            const { data: existingUser } = await db.getUserByEmail(email);
-            if (existingUser) {
-                showSyncStatus('error', 'Pengguna dengan email ini sudah ada di database.');
+            const userId = email.replace(/[@.]/g, '_');
+            if (localStorage.getItem(`pin_${userId}`)) {
+                showSyncStatus('error', 'User dengan email ini sudah ada!');
                 return;
             }
             
@@ -5451,7 +5291,6 @@
                 return;
             }
             
-            const userId = email.replace(/[@.]/g, '_');
             try {
                 const hashedPin = await hasher.hashPin(pin, userId); // Hash PIN
 
@@ -5677,23 +5516,32 @@
             if (form) form.classList.add('hidden');
         }
 
-        function viewUserDetails(userEmail) {
-            // Find the user object from the fetched list in user management
-            const user = document.getElementById('user-management-container').__users.find(u => u.email === userEmail);
-            if (!user) {
-                showSyncStatus('error', 'Data pengguna tidak ditemukan.');
-                return;
-            }
-
-            const { id: userId, email, name, pin, currency, theme, transaction_count, budget_count, goal_count, total_volume, created_at } = user;
-            const hasPin = !!pin;
+        function viewUserDetails(email) {
+            const userId = email.replace(/[@.]/g, '_');
+            const userTransactions = JSON.parse(localStorage.getItem(`transactions_${userId}`) || '[]');
+            const userBudgets = JSON.parse(localStorage.getItem(`budgets_${userId}`) || '[]');
+            const userGoals = JSON.parse(localStorage.getItem(`goals_${userId}`) || '[]'); // This part is now problematic as localStorage is removed.
+            const userProfile = JSON.parse(localStorage.getItem(`profile_${userId}`) || '{}');
+            const hasPin = !!localStorage.getItem(`pin_${userId}`);
+            
+            const totalIncome = userTransactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
+            const totalExpense = userTransactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+            const balance = totalIncome - totalExpense;
             
             const modal = document.createElement('div');
             modal.innerHTML = `
                 <div class="fixed inset-0 bg-black/60 backdrop-blur-lg flex items-center justify-center p-4 z-50 animate-fadeIn">
                     <div class="bg-white/95 backdrop-blur-3xl rounded-3xl p-6 sm:p-8 w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl border border-white/40 animate-slideUp">
                         <div class="flex items-center justify-between mb-6">
-                            <h3 class="text-xl font-bold text-gray-800">Detail Pengguna: ${email}</h3>
+                            <div class="flex items-center space-x-4">
+                                <div class="w-16 h-16 bg-gradient-to-br from-blue-400 to-indigo-500 rounded-3xl flex items-center justify-center shadow-lg">
+                                    <i class="fas fa-user text-white text-2xl"></i>
+                                </div>
+                                <div>
+                                    <h3 class="text-xl font-bold text-gray-800">${email}</h3>
+                                    <p class="text-gray-600 text-sm">Detail Pengguna & Aktivitas</p>
+                                </div>
+                            </div>
                             <button onclick="this.closest('.fixed').remove()" class="text-gray-500 hover:text-gray-700 p-2 rounded-xl hover:bg-gray-100 transition-all duration-300">
                                 <i class="fas fa-times text-xl"></i>
                             </button>
@@ -5701,11 +5549,31 @@
                         
                         <!-- User Stats -->
                         <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+                            <div class="bg-gradient-to-br from-green-50 to-emerald-50 p-4 rounded-2xl border border-green-200">
+                                <div class="flex items-center justify-between">
+                                    <div>
+                                        <p class="text-xs font-medium text-green-600 mb-1">Total Pemasukan</p>
+                                        <p class="text-lg font-bold text-green-700">Rp ${totalIncome.toLocaleString('id-ID')}</p>
+                                    </div>
+                                    <i class="fas fa-arrow-up text-green-500 text-xl"></i>
+                                </div>
+                            </div>
+                            
+                            <div class="bg-gradient-to-br from-red-50 to-rose-50 p-4 rounded-2xl border border-red-200">
+                                <div class="flex items-center justify-between">
+                                    <div>
+                                        <p class="text-xs font-medium text-red-600 mb-1">Total Pengeluaran</p>
+                                        <p class="text-lg font-bold text-red-700">Rp ${totalExpense.toLocaleString('id-ID')}</p>
+                                    </div>
+                                    <i class="fas fa-arrow-down text-red-500 text-xl"></i>
+                                </div>
+                            </div>
+                            
                             <div class="bg-gradient-to-br from-blue-50 to-indigo-50 p-4 rounded-2xl border border-blue-200">
                                 <div class="flex items-center justify-between">
                                     <div>
-                                        <p class="text-xs font-medium text-blue-600 mb-1">Total Volume Transaksi</p>
-                                        <p class="text-lg font-bold text-blue-700">Rp ${(total_volume * 1000).toLocaleString('id-ID')}</p>
+                                        <p class="text-xs font-medium text-blue-600 mb-1">Saldo Bersih</p>
+                                        <p class="text-lg font-bold text-blue-700">Rp ${balance.toLocaleString('id-ID')}</p>
                                     </div>
                                     <i class="fas fa-wallet text-blue-500 text-xl"></i>
                                 </div>
@@ -5726,7 +5594,7 @@
                                 </div>
                                 <div class="flex justify-between">
                                     <span class="text-gray-600">Nama:</span>
-                                    <span class="font-medium">${name || 'Tidak diset'}</span>
+                                    <span class="font-medium">${userProfile.name || 'Tidak diset'}</span>
                                 </div>
                                 <div class="flex justify-between">
                                     <span class="text-gray-600">Keamanan PIN:</span>
@@ -5736,15 +5604,11 @@
                                 </div>
                                 <div class="flex justify-between">
                                     <span class="text-gray-600">Mata Uang:</span>
-                                    <span class="font-medium">${currency || 'IDR'}</span>
+                                    <span class="font-medium">${userProfile.currency || 'IDR'}</span>
                                 </div>
                                 <div class="flex justify-between">
                                     <span class="text-gray-600">Tema:</span>
-                                    <span class="font-medium capitalize">${theme || 'Light'}</span>
-                                </div>
-                                <div class="flex justify-between">
-                                    <span class="text-gray-600">Bergabung:</span>
-                                    <span class="font-medium">${new Date(created_at).toLocaleDateString('id-ID')}</span>
+                                    <span class="font-medium capitalize">${userProfile.theme || 'Light'}</span>
                                 </div>
                             </div>
                         </div>
@@ -5754,19 +5618,44 @@
                             <h4 class="font-semibold text-gray-800 mb-3">Ringkasan Aktivitas</h4>
                             <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
                                 <div class="text-center p-3 bg-white rounded-xl">
-                                    <div class="text-2xl font-bold text-blue-600">${transaction_count || 0}</div>
+                                    <div class="text-2xl font-bold text-blue-600">${userTransactions.length}</div>
                                     <div class="text-gray-600">Transaksi</div>
                                 </div>
                                 <div class="text-center p-3 bg-white rounded-xl">
-                                    <div class="text-2xl font-bold text-green-600">${budget_count || 0}</div>
+                                    <div class="text-2xl font-bold text-green-600">${userBudgets.length}</div>
                                     <div class="text-gray-600">Anggaran</div>
                                 </div>
                                 <div class="text-center p-3 bg-white rounded-xl">
-                                    <div class="text-2xl font-bold text-purple-600">${goal_count || 0}</div>
+                                    <div class="text-2xl font-bold text-purple-600">${userGoals.length}</div>
                                     <div class="text-gray-600">Target</div>
                                 </div>
                             </div>
                         </div>
+                        
+                        <!-- Recent Transactions -->
+                        ${userTransactions.length > 0 ? `
+                            <div class="mt-6">
+                                <h4 class="font-semibold text-gray-800 mb-3">Transaksi Terbaru</h4>
+                                <div class="space-y-2 max-h-40 overflow-y-auto">
+                                    ${userTransactions.slice(-5).reverse().map(t => `
+                                        <div class="flex items-center justify-between p-3 bg-white rounded-xl border">
+                                            <div class="flex items-center space-x-3">
+                                                <div class="w-8 h-8 bg-gradient-to-br from-${t.type === 'income' ? 'green' : 'red'}-400 to-${t.type === 'income' ? 'emerald' : 'rose'}-500 rounded-xl flex items-center justify-center">
+                                                    <i class="fas fa-${t.type === 'income' ? 'arrow-up' : 'arrow-down'} text-white text-xs"></i>
+                                                </div>
+                                                <div>
+                                                    <p class="font-medium text-gray-800 text-sm">${t.description}</p>
+                                                    <p class="text-xs text-gray-500">${t.category} • ${new Date(t.date).toLocaleDateString('id-ID')}</p>
+                                                </div>
+                                            </div>
+                                            <span class="font-bold text-${t.type === 'income' ? 'green' : 'red'}-600 text-sm">
+                                                ${t.type === 'income' ? '+' : '-'}Rp ${t.amount.toLocaleString('id-ID')}
+                                            </span>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            </div>
+                        ` : ''}
                     </div>
                 </div>
             `;
@@ -6021,16 +5910,27 @@
         function checkDataIntegrity() {
             if (!appState.user) return false;
             
-            console.log('🔍 Data Integrity Check for user:', appState.user.id);
-            console.log('🔄 Current App State (from Supabase):', {
+            const userId = appState.user.id;
+            const storedTransactions = localStorage.getItem(`transactions_${userId}`);
+            const storedBudgets = localStorage.getItem(`budgets_${userId}`);
+            const storedGoals = localStorage.getItem(`goals_${userId}`);
+            
+            console.log('🔍 Data Integrity Check for user:', userId);
+            console.log('📊 Stored Transactions:', storedTransactions ? JSON.parse(storedTransactions).length : 0);
+            console.log('💰 Stored Budgets:', storedBudgets ? JSON.parse(storedBudgets).length : 0);
+            console.log('🎯 Stored Goals:', storedGoals ? JSON.parse(storedGoals).length : 0);
+            console.log('🔄 Current App State:', {
                 transactions: appState.transactions.length,
                 budgets: appState.budgets.length,
-                goals: appState.goals.length,
-                receivables: appState.receivables.length,
-                debts: appState.debts.length
+                goals: appState.goals.length
             });
-            showSyncStatus('success', 'Data state saat ini telah dicatat di konsol.');
-            return appState;
+            
+            return {
+                transactions: storedTransactions ? JSON.parse(storedTransactions) : [],
+                budgets: storedBudgets ? JSON.parse(storedBudgets) : [],
+                goals: storedGoals ? JSON.parse(storedGoals) : [],
+                receivables: JSON.parse(localStorage.getItem(`receivables_${userId}`) || '[]')
+            };
         }
 
         // Export all localStorage data for debugging
