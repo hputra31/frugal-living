@@ -1707,6 +1707,8 @@
                 ? `<div class="flex items-center space-x-2 bg-green-100 dark:bg-green-500/20 px-3 py-1 rounded-full"><div class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div><span class="text-xs font-medium text-green-700 dark:text-green-300">Tersinkronisasi</span></div>`
                 : `<div class="flex items-center space-x-2 bg-yellow-100 dark:bg-yellow-500/20 px-3 py-1 rounded-full"><div class="w-2 h-2 bg-yellow-500 rounded-full"></div><span class="text-xs font-medium text-yellow-700 dark:text-yellow-300">Mode Lokal</span></div>`;
 
+            const budgetCategories = getUniqueCategories('expense');
+
             return `
                 <div class="space-y-6 fade-in">
                     <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
@@ -1793,9 +1795,32 @@
 
                     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                         ${appState.budgets.map(budget => {
-                            const usedAmount = appState.transactions
-                                .filter(t => t.type === 'expense' && t.category === budget.category)
-                                .reduce((sum, t) => sum + t.amount, 0);
+                            const today = new Date();
+                            const transactionsForCategory = appState.transactions.filter(t => t.type === 'expense' && t.category === budget.category);
+                            let usedAmount = 0;
+
+                            if (budget.period === 'monthly') {
+                                const currentYear = today.getFullYear();
+                                const currentMonth = today.getMonth();
+                                usedAmount = transactionsForCategory.filter(t => {
+                                    const d = new Date(t.date);
+                                    return d.getFullYear() === currentYear && d.getMonth() === currentMonth;
+                                }).reduce((sum, t) => sum + t.amount, 0);
+                            } else if (budget.period === 'yearly') {
+                                const currentYear = today.getFullYear();
+                                usedAmount = transactionsForCategory.filter(t => new Date(t.date).getFullYear() === currentYear).reduce((sum, t) => sum + t.amount, 0);
+                            } else if (budget.period === 'weekly') {
+                                const todayForWeek = new Date(); // Use a new instance to avoid side effects
+                                const firstDayOfWeek = new Date(todayForWeek.setDate(todayForWeek.getDate() - todayForWeek.getDay()));
+                                firstDayOfWeek.setHours(0, 0, 0, 0);
+                                const lastDayOfWeek = new Date(firstDayOfWeek);
+                                lastDayOfWeek.setDate(lastDayOfWeek.getDate() + 6);
+                                lastDayOfWeek.setHours(23, 59, 59, 999);
+                                usedAmount = transactionsForCategory.filter(t => {
+                                    const d = new Date(t.date);
+                                    return d >= firstDayOfWeek && d <= lastDayOfWeek;
+                                }).reduce((sum, t) => sum + t.amount, 0);
+                            }
                             const progress = budget.amount > 0 ? (usedAmount / budget.amount) * 100 : 0;
                             const remaining = budget.amount - usedAmount;
                             const progressColor = progress > 100 ? 'red' : progress > 75 ? 'yellow' : 'blue';
@@ -2078,6 +2103,8 @@
             const syncStatusIndicator = useSupabase 
                 ? `<div class="flex items-center space-x-2 bg-green-100 dark:bg-green-500/20 px-3 py-1 rounded-full"><div class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div><span class="text-xs font-medium text-green-700 dark:text-green-300">Tersinkronisasi</span></div>`
                 : `<div class="flex items-center space-x-2 bg-yellow-100 dark:bg-yellow-500/20 px-3 py-1 rounded-full"><div class="w-2 h-2 bg-yellow-500 rounded-full"></div><span class="text-xs font-medium text-yellow-700 dark:text-yellow-300">Mode Lokal</span></div>`;
+
+            const budgetCategories = getUniqueCategories('expense');
 
             return `
                 <div class="space-y-6 fade-in">
