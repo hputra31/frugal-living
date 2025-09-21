@@ -2,11 +2,12 @@
   "rewrites": [
     {
       "source": "/",
-      "destination": "/frugal-living-app/landing.html"
+      "destination": "/frugal-living/landing.html"
     },
     {
       "source": "/(.*)",
-      "destination": "/frugal-living-app/$1"
+      "destination": "/frugal-living/$1"
     }
   ]
+
 }
