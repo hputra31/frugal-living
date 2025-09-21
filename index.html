@@ -15,6 +15,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800;900&display=swap');
         
@@ -88,6 +89,36 @@
         /* Style to hide buttons during PDF export */
         .pdf-export-mode button, .pdf-export-mode .hidden-on-export { display: none !important; }
 
+        /* Page transition animations */
+        .page-fade-in {
+            animation: pageFadeIn 0.4s ease-out forwards;
+        }
+        .page-fade-out {
+            animation: pageFadeOut 0.3s ease-in forwards;
+        }
+
+        @keyframes pageFadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(15px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes pageFadeOut {
+            from {
+                opacity: 1;
+                transform: translateY(0);
+            }
+            to {
+                opacity: 0;
+                transform: translateY(-15px);
+            }
+        }
+
     </style>
 </head>
 <body>
@@ -109,21 +140,21 @@
         let useSupabase = false;
         
         // Check if Supabase credentials are configured
-        if (SUPABASE_URL && SUPABASE_URL !== 'YOUR_SUPABASE_URL' && SUPABASE_ANON_KEY && SUPABASE_ANON_KEY !== 'YOUR_SUPABASE_ANON_KEY') {
+        if (SUPABASE_URL && !SUPABASE_URL.includes('YOUR_SUPABASE_URL') && SUPABASE_ANON_KEY && !SUPABASE_ANON_KEY.includes('YOUR_SUPABASE_ANON_KEY')) {
             try {
                 supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
                 useSupabase = true;
                 console.log('✅ Supabase initialized successfully');
             } catch (error) {
                 console.error('❌ Supabase initialization failed:', error);
-                useSupabase = false;
             }
         } else {
-            console.log('⚠️ Supabase not configured - using localStorage only');
+            console.error('❌ Supabase not configured. Please add credentials to index.html');
             console.log('📝 To enable Supabase:');
             console.log('1. Create a Supabase project at https://supabase.com');
-            console.log('2. Replace SUPABASE_URL and SUPABASE_ANON_KEY with your credentials');
-            console.log('3. Create the required tables (see setup instructions below)');
+            console.log('2. Go to Settings > API in your Supabase project.');
+            console.log('3. Copy the Project URL and anon public key.');
+            console.log('4. Paste them into the SUPABASE_URL and SUPABASE_ANON_KEY variables in this file.');
         }
         
         // Simple state management
@@ -143,6 +174,12 @@
                 currentPage: 1,
                 usersPerPage: 5, // Show 5 users per page
                 totalUsers: 0
+            },
+            systemStats: { // For admin dashboard
+                totalUsers: 0,
+                totalTransactions: 0,
+                totalVolume: 0,
+                topActiveUsers: []
             }
         };
 
@@ -249,6 +286,25 @@
                     .select('*')
                     .order('created_at', { ascending: true });
                 return { data, error };
+            },
+            
+            async getSystemStats() {
+                const { data, error } = await supabase
+                    .from('users_with_stats')
+                    .select('transaction_count, total_volume, email')
+                    .order('transaction_count', { ascending: false });
+
+                if (error) return { data: null, error };
+
+                const stats = data.reduce((acc, user) => {
+                    acc.totalTransactions += user.transaction_count || 0;
+                    acc.totalVolume += user.total_volume || 0;
+                    return acc;
+                }, { totalTransactions: 0, totalVolume: 0 });
+
+                stats.totalUsers = data.length;
+                stats.topActiveUsers = data.slice(0, 5);
+                return { data: stats, error: null };
             },
 
             async getTransactionsFromLastMonths(months = 6) {
@@ -437,6 +493,56 @@
             }
         };
 
+        // --- Custom Category Helpers ---
+        function getUniqueCategories(type = 'expense') {
+            const categories = new Set();
+            
+            // Default categories
+            const defaultExpense = ['Makanan', 'Transportasi', 'Belanja', 'Tagihan', 'Hiburan', 'Kesehatan', 'Pendidikan', 'Lainnya'];
+            const defaultIncome = ['Gaji', 'Freelance', 'Investasi', 'Hadiah', 'Bisnis', 'Lainnya'];
+
+            if (type === 'expense') {
+                defaultExpense.forEach(c => categories.add(c));
+            } else {
+                defaultIncome.forEach(c => categories.add(c));
+            }
+
+            // Add categories from transactions
+            appState.transactions.filter(t => t.type === type).forEach(t => categories.add(t.category));
+            
+            // Add categories from budgets (always expense)
+            if (type === 'expense') {
+                appState.budgets.forEach(b => categories.add(b.category));
+            }
+            
+            return Array.from(categories).sort();
+        }
+
+        function getCategoryEmoji(category) {
+            const emojiMap = {
+                'Makanan': '🍽️', 'Transportasi': '🚗', 'Belanja': '🛍️', 'Tagihan': '📄', 'Hiburan': '🎬', 'Kesehatan': '🏥', 'Pendidikan': '📚',
+                'Gaji': '💰', 'Freelance': '💻', 'Investasi': '📈', 'Hadiah': '🎁', 'Bisnis': '🏪',
+                'Lainnya': '📦'
+            };
+            return emojiMap[category] || '✨'; // Default emoji
+        }
+
+        function toggleNewCategoryInput(selectedValue, containerId, inputId) {
+            const container = document.getElementById(containerId);
+            const input = document.getElementById(inputId);
+            if (container && input) {
+                if (selectedValue === '--add-new--') {
+                    container.classList.remove('hidden');
+                    input.required = true;
+                    input.focus();
+                } else {
+                    container.classList.add('hidden');
+                    input.required = false;
+                    input.value = '';
+                }
+            }
+        }
+
         // Hashing utility using Web Crypto API for enhanced security
         const hasher = {
             async hashPin(pin, salt) {
@@ -454,45 +560,30 @@
 
         // Mock authentication with PIN system
         const auth = {
-            login: async (email, pin = null) => {
-                const userId = email.replace(/[@.]/g, '_');
-                let userPinHash = localStorage.getItem(`pin_${userId}`); // Coba ambil dari lokal dulu
-                let userExistsInSystem = !!userPinHash;
-                
-                // Jika PIN tidak ada di lokal, coba sinkronisasi dari Supabase
-                if (!userPinHash && useSupabase) { // Kondisi ini true di perangkat baru
-                    console.log(`🤔 PIN tidak ditemukan lokal untuk ${email}. Mengecek Supabase...`);
-                    const { data: dbUser, error } = await db.getUserByEmail(email);
-                    
-                    if (dbUser) {
-                        userExistsInSystem = true; // Tandai bahwa user ada di sistem
-                        if (dbUser.pin) {
-                            console.log(`✅ PIN ditemukan di Supabase, menyimpannya ke lokal.`);
-                            userPinHash = dbUser.pin; // Ambil PIN dari database
-                            localStorage.setItem(`pin_${userId}`, userPinHash); // Simpan ke lokal untuk login berikutnya
-                        } else {
-                            console.log(`🤷 User ada di Supabase tapi tidak memiliki PIN.`);
-                        }
-                    }
+            login: async (email, pin = null) => { // Wajib Supabase
+                if (!useSupabase) return { success: false, error: 'Supabase tidak terkonfigurasi.' };
+
+                const { data: dbUser, error: userError } = await db.getUserByEmail(email);
+
+                if (userError || !dbUser) {
+                    return { success: false, error: 'Email tidak terdaftar. Minta admin untuk membuat akun Anda.' };
                 }
 
-                // Jika setelah semua pengecekan user tetap tidak ditemukan
-                if (!userExistsInSystem) {
-                    if (useSupabase) {
-                        return { success: false, error: 'Email tidak terdaftar. Minta admin untuk membuat akun Anda.' };
-                    } else {
-                        // Fallback untuk mode lokal tanpa Supabase
-                        const defaultUsers = ['demo@frugal.com', 'admin@frugal.com', 'user@example.com', 'test@budget.com'];
-                        if (!defaultUsers.includes(email)) {
-                            return { success: false, error: 'Email tidak terdaftar. Gunakan: demo@frugal.com, user@example.com, test@budget.com, atau minta admin untuk membuat akun Anda.' };
-                        }
-                    }
+                // Jika user ada tapi belum punya PIN (misal baru dibuat admin), minta set PIN.
+                // Untuk login, kita asumsikan PIN sudah ada.
+                if (!dbUser.pin) {
+                    // Logika ini bisa dikembangkan untuk alur pembuatan PIN pertama kali.
+                    // Untuk sekarang, kita anggap user yang valid pasti punya PIN.
+                    return { success: false, error: 'Akun ini belum memiliki PIN. Silakan hubungi admin.' };
                 }
 
+                // Jika user ada dan punya PIN, tapi PIN tidak diberikan di form, minta PIN.
                 if (!pin) {
                     return { success: false, needPin: true };
                 }
-                
+
+                const userId = dbUser.id;
+                const userPinHash = dbUser.pin;
                 const hashedPin = await hasher.hashPin(pin, userId);
                 if (!userPinHash || hashedPin !== userPinHash) {
                     return { success: false, error: 'PIN salah' };
@@ -500,86 +591,48 @@
 
                 let userRole = 'user';
                 if (useSupabase) {
-                    const { data: dbUser, error } = await db.getUserByEmail(email);
                     if (dbUser && dbUser.role) {
                         userRole = dbUser.role;
-                    } else if (email === 'admin@frugal.com') {
-                        // Fallback for initial admin setup or if DB fetch fails
-                        userRole = 'admin';
                     }
-                } else {
-                    // Local mode
-                    if (email === 'admin@frugal.com') userRole = 'admin';
                 }
 
-                appState.user = { email, id: userId, role: userRole };
-                localStorage.setItem('frugal_user', JSON.stringify(appState.user));
+                // Simpan seluruh data user dari DB ke appState
+                appState.user = dbUser;
+
                 if (userRole === 'admin') {
-                    // Set default page for admin to admin-dashboard
                     appState.currentPage = 'admin-dashboard';
                 }
                 console.log(`✅ Login successful for: ${email} with role: ${userRole}`);
                 return { success: true };
             },
             logout: async function() { // Menggunakan function agar 'this' merujuk ke object auth
-                if (useSupabase) {
-                    await unsubscribeAll();
-                }
-                if (appState.user) {
-                    const userId = appState.user.id;
-                    // Hapus semua data spesifik pengguna dari localStorage saat logout
-                    localStorage.removeItem(`transactions_${userId}`);
-                    localStorage.removeItem(`budgets_${userId}`);
-                    localStorage.removeItem(`goals_${userId}`);
-                    localStorage.removeItem(`receivables_${userId}`);
-                    localStorage.removeItem(`debts_${userId}`);
-                    localStorage.removeItem(`profile_${userId}`);
-                }
+                await unsubscribeAll();
                 appState.user = null;
-                localStorage.removeItem('frugal_user');
                 // Reset seluruh appState ke kondisi awal
                 Object.assign(appState, { transactions: [], budgets: [], goals: [], receivables: [], debts: [] });
-                console.log('✅ Logout successful, user data cleared from localStorage.');
+                console.log('✅ Logout successful.');
                 navigateTo('overview'); // Arahkan ke halaman login
             },
             init: async () => {
-                const stored = localStorage.getItem('frugal_user');
-                if (stored) {
-                    appState.user = JSON.parse(stored);
-                    // If the user is an admin, set their default page to the admin dashboard
-                    if (appState.user.role === 'admin') {
-                        appState.currentPage = 'admin-dashboard';
-                    }
-                    loadProfileSettings(appState.user.id);
-                    await loadUserData();
-                }
+                // Tidak ada lagi inisialisasi sesi dari localStorage.
+                // Pengguna harus selalu login.
             },
             setPin: async (newPin) => {
                 if (!appState.user) return false;
                 
                 const userId = appState.user.id;
-                const oldPin = localStorage.getItem(`pin_${userId}`);
-                
                 const hashedPin = await hasher.hashPin(newPin, userId);
 
-                // Update localStorage first (optimistic)
-                localStorage.setItem(`pin_${userId}`, hashedPin);
-                
                 if (useSupabase) {
                     try {
                         const { error } = await db.updateUser(userId, { pin: hashedPin });
                         if (error) {
                             console.error('❌ Supabase PIN update error:', error);
-                            // Rollback localStorage change if Supabase fails
-                            if (oldPin) { localStorage.setItem(`pin_${userId}`, oldPin); } 
-                            else { localStorage.removeItem(`pin_${userId}`); }
                             showSyncStatus('error', 'Gagal sinkronisasi PIN ke cloud.');
                         }
                         console.log('✅ PIN hash updated in Supabase for user:', userId);
                     } catch (e) {
                         console.error('❌ Exception during PIN update:', e);
-                        if (oldPin) { localStorage.setItem(`pin_${userId}`, oldPin); } 
-                        else { localStorage.removeItem(`pin_${userId}`); }
                         return false;
                     }
                 }
@@ -589,24 +642,17 @@
                 if (!appState.user) return false;
                 
                 const userId = appState.user.id;
-                const oldPin = localStorage.getItem(`pin_${userId}`);
-                
-                // Remove from localStorage first
-                localStorage.removeItem(`pin_${userId}`);
-                
                 if (useSupabase) {
                     try {
                         const { error } = await db.updateUser(userId, { pin: null });
                         if (error) {
                             console.error('❌ Supabase PIN removal error:', error);
-                            localStorage.setItem(`pin_${userId}`, oldPin); // Rollback
                             showSyncStatus('error', 'Gagal hapus PIN di cloud.');
                             return false;
                         }
                         console.log('✅ PIN removed from Supabase for user:', userId);
                     } catch (e) {
                         console.error('❌ Exception during PIN removal:', e);
-                        localStorage.setItem(`pin_${userId}`, oldPin); // Rollback
                         return false;
                     }
                 }
@@ -614,7 +660,7 @@
             },
             hasPin: () => {
                 if (appState.user) {
-                    return !!localStorage.getItem(`pin_${appState.user.id}`);
+                    return !!appState.user.pin;
                 }
                 return false;
             }
@@ -630,10 +676,9 @@
         }
 
         function loadProfileSettings(userId) {
-            const profileData = JSON.parse(localStorage.getItem(`profile_${userId}`) || '{}');
-            appState.profile.name = profileData.name || 'Pengguna Frugal';
-            appState.profile.currency = profileData.currency || 'IDR';
-            appState.profile.theme = profileData.theme || 'light';
+            appState.profile.name = appState.user.name || 'Pengguna Frugal';
+            appState.profile.currency = appState.user.currency || 'IDR';
+            appState.profile.theme = appState.user.theme || 'light';
             applyTheme(appState.profile.theme);
         }
 
@@ -643,93 +688,60 @@
             
             const userId = appState.user.id;
             
-            if (useSupabase) {
-                try {
-                    console.log('🔄 Loading data from Supabase...');
-                    
-                    // Load transactions
-                    const { data: transactions, error: transError } = await db.getTransactions(userId);
-                    if (transError) throw transError;
-                    appState.transactions = transactions || [];
-                    
-                    // Load budgets
-                    const { data: budgets, error: budgetError } = await db.getBudgets(userId);
-                    if (budgetError) throw budgetError;
-                    appState.budgets = budgets || [];
-                    
-                    // Load goals
-                    const { data: goals, error: goalError } = await db.getGoals(userId);
-                    if (goalError) throw goalError;
-                    appState.goals = goals || [];
-                    
-                    // Load receivables
-                    const { data: receivables, error: receivableError } = await db.getReceivables(userId);
-                    if (receivableError) throw receivableError;
-                    appState.receivables = receivables || [];
+            try {
+                console.log('🔄 Loading data from Supabase...');
+                
+                const [
+                    { data: transactions, error: transError },
+                    { data: budgets, error: budgetError },
+                    { data: goals, error: goalError },
+                    { data: receivables, error: receivableError },
+                    { data: debts, error: debtError }
+                ] = await Promise.all([
+                    db.getTransactions(userId),
+                    db.getBudgets(userId),
+                    db.getGoals(userId),
+                    db.getReceivables(userId),
+                    db.getDebts(userId)
+                ]);
 
-                    // Load debts
-                    const { data: debts, error: debtError } = await db.getDebts(userId);
-                    if (debtError) throw debtError;
-                    appState.debts = debts || [];
-                    
-                    console.log('✅ Data loaded from Supabase:', {
-                        transactions: appState.transactions.length,
-                        budgets: appState.budgets.length,
-                        goals: appState.goals.length
-                    });
-                    
-                    // Also save to localStorage as backup
-                    localStorage.setItem(`transactions_${userId}`, JSON.stringify(appState.transactions));
-                    localStorage.setItem(`budgets_${userId}`, JSON.stringify(appState.budgets));
-                    localStorage.setItem(`goals_${userId}`, JSON.stringify(appState.goals));
-                    localStorage.setItem(`receivables_${userId}`, JSON.stringify(appState.receivables));
-                    localStorage.setItem(`debts_${userId}`, JSON.stringify(appState.debts));
-                    
-                    // Set up real-time listeners after data is successfully loaded
-                    if (useSupabase) {
-                        await setupRealtimeSubscriptions(userId);
-                    }
-
-                } catch (error) {
-                    console.error('❌ Error loading from Supabase, falling back to localStorage:', error);
-                    loadFromLocalStorage(userId);
+                if (transError || budgetError || goalError || receivableError || debtError) {
+                    throw new Error('One or more data streams failed to load.');
                 }
-            } else {
-                loadFromLocalStorage(userId);
+
+                appState.transactions = transactions || [];
+                appState.budgets = budgets || [];
+                appState.goals = goals || [];
+                appState.receivables = receivables || [];
+                appState.debts = debts || [];
+                
+                console.log('✅ Data loaded from Supabase.');
+                
+                await setupRealtimeSubscriptions(userId);
+
+                // If user is admin, fetch system-wide stats
+                if (appState.user.role === 'admin' && useSupabase) {
+                    console.log('👑 Admin detected, fetching system stats...');
+                    const { data: stats, error: statsError } = await db.getSystemStats();
+                    if (statsError) {
+                        console.error('❌ Error fetching system stats:', statsError);
+                    }
+                    appState.systemStats = stats || { totalUsers: 0, totalTransactions: 0, totalVolume: 0, topActiveUsers: [] };
+                }
+            } catch (error) {
+                console.error('❌ Fatal Error loading from Supabase:', error);
+                showSyncStatus('error', 'Gagal memuat data dari cloud. Coba refresh.');
             }
-        }
-        
-        function loadFromLocalStorage(userId) {
-            appState.transactions = JSON.parse(localStorage.getItem(`transactions_${userId}`) || '[]');
-            appState.budgets = JSON.parse(localStorage.getItem(`budgets_${userId}`) || '[]');
-            appState.goals = JSON.parse(localStorage.getItem(`goals_${userId}`) || '[]');
-            appState.receivables = JSON.parse(localStorage.getItem(`receivables_${userId}`) || '[]');
-            appState.debts = JSON.parse(localStorage.getItem(`debts_${userId}`) || '[]');
-            console.log('📱 Data loaded from localStorage:', {
-                transactions: appState.transactions.length,
-                budgets: appState.budgets.length,
-                goals: appState.goals.length,
-                receivables: appState.receivables.length,
-                debts: appState.debts.length
-            });
         }
 
         async function saveTransaction(transaction) {
             if (!appState.user) return;
             
-            const userId = appState.user.id;
             transaction.id = Date.now();
-            transaction.user_id = userId;
+            transaction.user_id = appState.user.id;
             transaction.created_at = new Date().toISOString();
             
-            // Add to local state first
-            appState.transactions.push(transaction);
-            
             try {
-                // Save to localStorage
-                localStorage.setItem(`transactions_${userId}`, JSON.stringify(appState.transactions));
-                
-                // Save to Supabase if configured
                 if (useSupabase) {
                     console.log('💾 Saving transaction to Supabase...');
                     const { data, error } = await db.createTransaction(transaction);
@@ -738,20 +750,14 @@
                         showSyncStatus('error', 'Tersimpan lokal, gagal sync ke cloud');
                     } else {
                         console.log('✅ Transaction saved to Supabase:', data);
+                        await loadUserData(); // Reload data to get the latest state
+                        render();
                         showSyncStatus('success', 'Transaksi tersimpan & tersinkronisasi');
                     }
-                } else {
-                    showSyncStatus('success', 'Transaksi tersimpan (lokal)');
                 }
-                
-                console.log('✅ Transaction saved:', transaction);
-                console.log('📊 Total transactions for user:', appState.transactions.length);
-                
             } catch (error) {
                 console.error('❌ Error saving transaction:', error);
                 showSyncStatus('error', 'Gagal menyimpan transaksi');
-                // Remove from local state if save failed
-                appState.transactions.pop();
             }
         }
 
@@ -762,24 +768,16 @@
                 confirmText: 'Ya, Hapus',
                 isDestructive: true,
                 onConfirm: async () => {
-                    if (!appState.user) return;
-                    const userId = appState.user.id;
-                    const originalTransactions = [...appState.transactions];
-                    appState.transactions = appState.transactions.filter(t => t.id !== id);
-                    render(); // Optimistic UI update
-                    localStorage.setItem(`transactions_${userId}`, JSON.stringify(appState.transactions));
                     if (useSupabase) {
                         const { error } = await db.deleteTransaction(id);
                         if (error) {
                             console.error('❌ Error deleting transaction:', error);
-                            showSyncStatus('error', 'Gagal menghapus. Data dikembalikan.');
-                            appState.transactions = originalTransactions; // Rollback
-                            render();
+                            showSyncStatus('error', 'Gagal menghapus transaksi.');
                         } else {
+                            await loadUserData();
+                            render();
                             showSyncStatus('success', 'Transaksi dihapus & disinkronisasi.');
                         }
-                    } else {
-                        showSyncStatus('success', 'Transaksi berhasil dihapus (lokal).');
                     }
                 }
             });
@@ -788,33 +786,25 @@
         async function createBudget(budget) {
             if (!appState.user) return;
             
-            const userId = appState.user.id;
             budget.id = Date.now();
-            budget.user_id = userId;
+            budget.user_id = appState.user.id;
             budget.created_at = new Date().toISOString();
 
-            appState.budgets.push(budget);
-            
             try {
-                localStorage.setItem(`budgets_${userId}`, JSON.stringify(appState.budgets));
-                
                 if (useSupabase) {
                     const { data, error } = await db.createBudget(budget);
                     if (error) {
                         showSyncStatus('error', 'Gagal sync anggaran ke cloud');
                         console.error('Supabase budget create error:', error);
-                        appState.budgets.pop(); // Rollback jika Supabase gagal
-                        localStorage.setItem(`budgets_${userId}`, JSON.stringify(appState.budgets));
                     } else {
+                        await loadUserData();
+                        render();
                         showSyncStatus('success', 'Anggaran dibuat & disinkronisasi');
                     }
-                } else {
-                    showSyncStatus('success', 'Anggaran berhasil dibuat (lokal)');
                 }
             } catch (error) {
                 console.error('Error creating budget:', error);
                 showSyncStatus('error', 'Gagal membuat anggaran');
-                appState.budgets.pop(); // Rollback
             } finally {
                 render();
             }
@@ -823,32 +813,21 @@
         async function updateBudget(budgetId, updates) {
             if (!appState.user) return;
 
-            const userId = appState.user.id;
-            const budgetIndex = appState.budgets.findIndex(b => b.id === budgetId);
-            if (budgetIndex === -1) return;
-
-            const originalBudget = { ...appState.budgets[budgetIndex] };
-            appState.budgets[budgetIndex] = { ...appState.budgets[budgetIndex], ...updates, updated_at: new Date().toISOString() };
-
             try {
-                localStorage.setItem(`budgets_${userId}`, JSON.stringify(appState.budgets));
-
                 if (useSupabase) {
                     const { data, error } = await db.updateBudget(budgetId, updates);
                     if (error) {
                         showSyncStatus('error', 'Gagal sync update anggaran');
                         console.error('Supabase budget update error:', error);
-                        // Rollback jika Supabase gagal
-                        appState.budgets[budgetIndex] = originalBudget;
-                        localStorage.setItem(`budgets_${userId}`, JSON.stringify(appState.budgets));
+                    } else {
+                        await loadUserData();
+                        render();
+                        showSyncStatus('success', 'Anggaran berhasil diperbarui.');
                     }
                 }
             } catch (error) {
                 console.error('Error updating budget:', error);
                 showSyncStatus('error', 'Gagal memperbarui anggaran');
-                appState.budgets[budgetIndex] = originalBudget; // Rollback
-            } finally {
-                render();
             }
         }
 
@@ -859,21 +838,14 @@
                 confirmText: 'Ya, Hapus',
                 isDestructive: true,
                 onConfirm: async () => {
-                    if (!appState.user) return;
-                    const userId = appState.user.id;
-                    const originalBudgets = [...appState.budgets];
-                    appState.budgets = appState.budgets.filter(b => b.id !== budgetId);
-                    render(); // Optimistic UI update
-                    localStorage.setItem(`budgets_${userId}`, JSON.stringify(appState.budgets));
-
                     if (useSupabase) {
                         const { error } = await db.deleteBudget(budgetId);
                         if (error) {
                             console.error('❌ Error deleting budget:', error);
-                            showSyncStatus('error', 'Gagal menghapus. Data dikembalikan.');
-                            appState.budgets = originalBudgets; // Rollback
-                            render();
+                            showSyncStatus('error', 'Gagal menghapus anggaran.');
                         } else {
+                            await loadUserData();
+                            render();
                             showSyncStatus('success', 'Anggaran dihapus & disinkronisasi.');
                         }
                     }
@@ -884,35 +856,21 @@
         async function updateReceivableStatus(receivableId, status) {
             if (!appState.user) return;
 
-            const userId = appState.user.id;
-            const receivableIndex = appState.receivables.findIndex(r => r.id === receivableId);
-            if (receivableIndex === -1) return;
-
-            const originalReceivable = { ...appState.receivables[receivableIndex] };
-            appState.receivables[receivableIndex].status = status;
-            appState.receivables[receivableIndex].updated_at = new Date().toISOString();
-
             try {
-                localStorage.setItem(`receivables_${userId}`, JSON.stringify(appState.receivables));
-
                 if (useSupabase) {
                     const { data, error } = await db.updateReceivable(receivableId, { status });
                     if (error) {
                         showSyncStatus('error', 'Gagal sync update status piutang');
                         console.error('Supabase receivable update error:', error);
-                        // Rollback jika Supabase gagal
-                        appState.receivables[receivableIndex] = originalReceivable;
-                        localStorage.setItem(`receivables_${userId}`, JSON.stringify(appState.receivables));
                     } else {
+                        await loadUserData();
+                        render();
                         showSyncStatus('success', 'Status piutang diperbarui & disinkronisasi');
                     }
-                } else {
-                    showSyncStatus('success', 'Status piutang berhasil diperbarui (lokal)');
                 }
             } catch (error) {
                 console.error('Error updating receivable status:', error);
                 showSyncStatus('error', 'Gagal memperbarui status piutang');
-                appState.receivables[receivableIndex] = originalReceivable; // Rollback
             } finally {
                 // Re-render the UI after the operation is complete
                 render();
@@ -926,25 +884,16 @@
                 confirmText: 'Ya, Hapus',
                 isDestructive: true,
                 onConfirm: async () => {
-                    if (!appState.user) return;
-                    const userId = appState.user.id;
-                    const originalReceivables = [...appState.receivables];
-                    appState.receivables = appState.receivables.filter(r => r.id !== receivableId);
-                    render(); // Optimistic UI update
-                    localStorage.setItem(`receivables_${userId}`, JSON.stringify(appState.receivables));
-
                     if (useSupabase) {
                         const { error } = await db.deleteReceivable(receivableId);
                         if (error) {
                             console.error('❌ Error deleting receivable:', error);
-                            showSyncStatus('error', 'Gagal menghapus. Data dikembalikan.');
-                            appState.receivables = originalReceivables; // Rollback
-                            render();
+                            showSyncStatus('error', 'Gagal menghapus piutang.');
                         } else {
+                            await loadUserData();
+                            render();
                             showSyncStatus('success', 'Piutang dihapus & disinkronisasi.');
                         }
-                    } else {
-                        showSyncStatus('success', 'Piutang berhasil dihapus (lokal).');
                     }
                 }
             });
@@ -954,35 +903,26 @@
         async function createDebt(debt) {
             if (!appState.user) return;
             
-            const userId = appState.user.id;
             debt.id = Date.now();
-            debt.user_id = userId;
+            debt.user_id = appState.user.id;
             debt.status = 'unpaid';
             debt.created_at = new Date().toISOString();
             
-            appState.debts.push(debt);
-            
             try {
-                localStorage.setItem(`debts_${userId}`, JSON.stringify(appState.debts));
-                
                 if (useSupabase) {
                     const { data, error } = await db.createDebt(debt);
                     if (error) {
                         showSyncStatus('error', 'Gagal sync utang ke cloud');
                         console.error('Supabase debt create error:', error);
-                        // Rollback jika Supabase gagal
-                        appState.debts.pop();
-                        localStorage.setItem(`debts_${userId}`, JSON.stringify(appState.debts));
                     } else {
+                        await loadUserData();
+                        render();
                         showSyncStatus('success', 'Utang dicatat & disinkronisasi');
                     }
-                } else {
-                    showSyncStatus('success', 'Utang berhasil dicatat (lokal)');
                 }
             } catch (error) {
                 console.error('Error creating debt:', error);
                 showSyncStatus('error', 'Gagal mencatat utang');
-                appState.debts.pop(); // Rollback
             } finally {
                 render();
             }
@@ -991,33 +931,19 @@
         async function updateDebtStatus(debtId, status) {
             if (!appState.user) return;
 
-            const userId = appState.user.id;
-            const debtIndex = appState.debts.findIndex(d => d.id === debtId);
-            if (debtIndex === -1) return;
-
-            const originalDebt = { ...appState.debts[debtIndex] };
-            appState.debts[debtIndex].status = status;
-            appState.debts[debtIndex].updated_at = new Date().toISOString();
-
             try {
-                localStorage.setItem(`debts_${userId}`, JSON.stringify(appState.debts));
-
                 if (useSupabase) {
                     const { data, error } = await db.updateDebt(debtId, { status });
                     if (error) {
-                        // Rollback jika Supabase gagal
-                        appState.debts[debtIndex] = originalDebt;
-                        localStorage.setItem(`debts_${userId}`, JSON.stringify(appState.debts));
                         showSyncStatus('error', 'Gagal sync update status utang');
                     } else {
+                        await loadUserData();
+                        render();
                         showSyncStatus('success', 'Status utang diperbarui & disinkronisasi');
                     }
-                } else {
-                    showSyncStatus('success', 'Status utang berhasil diperbarui (lokal)');
                 }
             } catch (error) {
                 showSyncStatus('error', 'Gagal memperbarui status utang');
-                appState.debts[debtIndex] = originalDebt; // Rollback
             } finally {
                 render();
             }
@@ -1030,18 +956,17 @@
                 confirmText: 'Ya, Hapus',
                 isDestructive: true,
                 onConfirm: async () => {
-                    if (!appState.user) return;
-                    const userId = appState.user.id;
-                    const originalDebts = [...appState.debts];
-                    appState.debts = appState.debts.filter(d => d.id !== debtId);
-                    render(); // Optimistic UI update
-                    localStorage.setItem(`debts_${userId}`, JSON.stringify(appState.debts));
-
                     if (useSupabase) {
                         const { error } = await db.deleteDebt(debtId);
-                        if (error) { appState.debts = originalDebts; render(); } // Rollback
+                        if (error) {
+                            showSyncStatus('error', 'Gagal menghapus utang.');
+                            console.error('Error deleting debt:', error);
+                        } else {
+                            await loadUserData();
+                            render();
+                            showSyncStatus('success', 'Utang berhasil dihapus.');
+                        }
                     }
-                    showSyncStatus('success', 'Utang berhasil dihapus.');
                 }
             });
         }
@@ -1049,33 +974,25 @@
         async function createGoal(goal) {
             if (!appState.user) return;
             
-            const userId = appState.user.id;
             goal.id = Date.now();
-            goal.user_id = userId;
+            goal.user_id = appState.user.id;
             goal.created_at = new Date().toISOString();
 
-            appState.goals.push(goal);
-
             try {
-                localStorage.setItem(`goals_${userId}`, JSON.stringify(appState.goals));
-                
                 if (useSupabase) {
                     const { data, error } = await db.createGoal(goal);
                     if (error) {
                         showSyncStatus('error', 'Gagal sync target ke cloud');
                         console.error('Supabase goal create error:', error);
-                        appState.goals.pop(); // Rollback jika Supabase gagal
-                        localStorage.setItem(`goals_${userId}`, JSON.stringify(appState.goals));
                     } else {
+                        await loadUserData();
+                        render();
                         showSyncStatus('success', 'Target dibuat & disinkronisasi');
                     }
-                } else {
-                    showSyncStatus('success', 'Target berhasil dibuat (lokal)');
                 }
             } catch (error) {
                 console.error('Error creating goal:', error);
                 showSyncStatus('error', 'Gagal membuat target');
-                appState.goals.pop(); // Rollback
             } finally {
                 render();
             }
@@ -1111,6 +1028,26 @@
                     </div>
                 </div>
             `;
+        }
+
+        function renderSetupRequiredPage() {
+            return `
+                <div class="min-h-screen bg-gradient-to-br from-red-900 via-gray-900 to-black flex items-center justify-center p-4 text-white">
+                    <div class="text-center bg-white/10 backdrop-blur-xl rounded-3xl p-8 max-w-2xl border border-white/20">
+                        <div class="w-20 h-20 bg-gradient-to-br from-red-500 to-orange-500 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-lg">
+                            <i class="fas fa-tools text-white text-3xl"></i>
+                        </div>
+                        <h1 class="text-4xl font-bold mb-4">Konfigurasi Diperlukan</h1>
+                        <p class="text-white/80 text-lg mb-6">
+                            Aplikasi ini memerlukan koneksi ke Supabase untuk berfungsi. Silakan konfigurasi kredensial Anda di file <code>index.html</code>.
+                        </p>
+                        <div class="text-left bg-black/30 p-4 rounded-xl font-mono text-sm">
+                            <p><span class="text-yellow-400">const SUPABASE_URL</span> = 'PASTE_URL_ANDA_DISINI';</p>
+                            <p><span class="text-yellow-400">const SUPABASE_ANON_KEY</span> = 'PASTE_KUNCI_ANON_ANDA_DISINI';</p>
+                        </div>
+                        <p class="text-white/60 text-sm mt-6">Setelah Anda mengisi kredensial, silakan refresh halaman ini.</p>
+                    </div>
+                </div>`;
         }
 
         // Login Page
@@ -1152,8 +1089,6 @@
                                     />
                                 </div>
                                 
-
-                                
                                 <div id="error-message" class="hidden bg-red-500/20 border border-red-400/30 text-red-100 px-4 py-3 rounded-2xl backdrop-blur-sm">
                                     <div class="flex items-center">
                                         <i class="fas fa-exclamation-triangle mr-3 text-red-300"></i>
@@ -1192,7 +1127,6 @@
                                     <i class="fas fa-arrow-right ml-auto opacity-0 group-hover:opacity-100 transition-opacity duration-300"></i>
                                 </div>
                             </button>
-                            
                         </div>
 
                         <!-- Footer Info -->
@@ -1276,7 +1210,7 @@
                                         <i class="fas fa-user text-white text-lg"></i>
                                     </div>
                                     <div class="flex-1 ml-3">
-                                        <p class="font-semibold text-gray-800 dark:text-gray-100">Selamat Datang!</p>
+                                        <p class="font-semibold text-gray-800 dark:text-gray-100 truncate">${appState.user.name || 'Pengguna Frugal'}</p>
                                         <p class="text-sm text-gray-500 truncate dark:text-gray-400">${appState.user.email}</p>
                                     </div>
                                 </div>
@@ -1302,7 +1236,7 @@
                     <!-- Main Content -->
                     <div class="lg:ml-72 pt-20">
                         <main class="p-4 sm:p-6 lg:p-8 pb-20">
-                            <div id="page-content">
+                            <div id="page-content" class="page-fade-in">
                                 ${renderCurrentPage()}
                             </div>
                         </main>
@@ -1685,6 +1619,8 @@
                 ? `<div class="flex items-center space-x-2 bg-green-100 dark:bg-green-500/20 px-3 py-1 rounded-full"><div class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div><span class="text-xs font-medium text-green-700 dark:text-green-300">Tersinkronisasi</span></div>`
                 : `<div class="flex items-center space-x-2 bg-yellow-100 dark:bg-yellow-500/20 px-3 py-1 rounded-full"><div class="w-2 h-2 bg-yellow-500 rounded-full"></div><span class="text-xs font-medium text-yellow-700 dark:text-yellow-300">Mode Lokal</span></div>`;
 
+            const budgetCategories = getUniqueCategories('expense');
+
             return `
                 <div class="space-y-6 fade-in">
                     <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
@@ -1793,26 +1729,30 @@
                             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <select
                                     id="budget-category"
-                                    class="w-full px-4 py-3 border-2 border-gray-200 rounded-2xl focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 font-medium bg-white/80 backdrop-blur-sm transition-all duration-300 text-sm sm:text-base shadow-sm dark:bg-slate-700 dark:border-slate-600 dark:text-white dark:placeholder-gray-400"
+                                    class="w-full px-4 py-3 border-2 border-gray-200 rounded-2xl focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 font-medium bg-white/80 backdrop-blur-sm transition-all duration-300 text-sm sm:text-base shadow-sm dark:bg-slate-700 dark:border-slate-600 dark:text-white"
                                     required
+                                    onchange="toggleNewCategoryInput(this.value, 'budget-new-category-container', 'budget-new-category')"
                                 >
                                     <option value="">✨ Pilih Kategori Anggaran</option>
-                                    <option value="Makanan">🍽️ Makanan & Minuman</option>
-                                    <option value="Transportasi">🚗 Transportasi</option>
-                                    <option value="Belanja">🛍️ Belanja</option>
-                                    <option value="Tagihan">📄 Tagihan & Utilitas</option>
-                                    <option value="Hiburan">🎬 Hiburan</option>
-                                    <option value="Kesehatan">🏥 Kesehatan</option>
-                                    <option value="Pendidikan">📚 Pendidikan</option>
-                                    <option value="Lainnya">📦 Lainnya</option>
+                                    ${budgetCategories.map(cat => `<option value="${cat}">${getCategoryEmoji(cat)} ${cat}</option>`).join('')}
+                                    <option value="--add-new--">➕ Tambah Kategori Baru...</option>
                                 </select>
                                 <input
                                     type="number"
                                     step="1000"
                                     id="budget-amount"
                                     placeholder="Jumlah Anggaran (Rp)"
-                                    class="w-full px-4 py-3 border-2 border-gray-200 rounded-2xl focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 font-medium bg-white/80 backdrop-blur-sm transition-all duration-300 text-sm sm:text-base shadow-sm dark:bg-slate-700 dark:border-slate-600 dark:text-white dark:placeholder-gray-400"
+                                    class="w-full px-4 py-3 border-2 border-gray-200 rounded-2xl focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 font-medium bg-white/80 backdrop-blur-sm transition-all duration-300 text-sm sm:text-base shadow-sm dark:bg-slate-700 dark:border-slate-600 dark:text-white"
                                     required
+                                />
+                            </div>
+                            <div id="budget-new-category-container" class="hidden">
+                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Nama Kategori Baru</label>
+                                <input
+                                    type="text"
+                                    id="budget-new-category"
+                                    placeholder="Contoh: Investasi, Donasi"
+                                    class="w-full px-4 py-3 border-2 border-gray-200 rounded-2xl focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 font-medium bg-white/80 backdrop-blur-sm transition-all duration-300 text-sm sm:text-base shadow-sm dark:bg-slate-700 dark:border-slate-600 dark:text-white"
                                 />
                             </div>
                             <div>
@@ -2468,36 +2408,11 @@
                                     </button>
                                 </div>
                             ` : `
-                                <!-- Simple Chart Visualization -->
-                                <div class="space-y-4">${(() => {
-                                    const trendValues = Object.values(trendData);
-                                    const maxAmount = Math.max(1, ...trendValues.map(d => d.income), ...trendValues.map(d => d.expense));
-                                    return `
-                                    <div class="relative h-32 sm:h-40 bg-gradient-to-t from-blue-50 to-transparent rounded-2xl p-4 flex items-end justify-around dark:from-blue-900/50">
-                                        ${trendValues.map(monthData => {
-                                            const incomeHeight = (monthData.income / maxAmount) * 100;
-                                            const expenseHeight = (monthData.expense / maxAmount) * 100;
-                                            return `
-                                                <div class="flex items-end h-full gap-1 group relative">
-                                                    <div class="w-4 bg-gradient-to-t from-green-500 to-green-400 rounded-t-lg shadow-lg" style="height: ${incomeHeight}%" title="Pemasukan: Rp ${(monthData.income * 1000).toLocaleString('id-ID')}"></div>
-                                                    <div class="w-4 bg-gradient-to-t from-red-500 to-red-400 rounded-t-lg shadow-lg" style="height: ${expenseHeight}%" title="Pengeluaran: Rp ${(monthData.expense * 1000).toLocaleString('id-ID')}"></div>
-                                                    <div class="absolute -bottom-6 text-center w-full text-xs text-gray-500 dark:text-gray-400">${monthData.label}</div>
-                                                </div>
-                                            `;
-                                        }).join('')}
-                                    </div>
-                                    <div class="flex items-center justify-center space-x-6 text-xs sm:text-sm">
-                                        <div class="flex items-center">
-                                            <div class="w-3 h-3 bg-gradient-to-r from-green-400 to-green-500 rounded-full mr-2"></div>
-                                            <span class="text-gray-600 dark:text-gray-300">Pemasukan</span>
-                                        </div>
-                                        <div class="flex items-center">
-                                            <div class="w-3 h-3 bg-gradient-to-r from-red-400 to-red-500 rounded-full mr-2"></div>
-                                            <span class="text-gray-600">Pengeluaran</span>
-                                        </div>
-                                    </div>
+                                <!-- Interactive Chart with Chart.js -->
+                                <div class="relative h-64">
+                                    <canvas id="monthlyTrendChart"></canvas>
                                 </div>
-                            `;})()}</div>`}
+                            `}
                         </div>
 
                         <!-- Category Breakdown -->
@@ -2520,32 +2435,26 @@
                                     <p class="text-gray-500 text-sm sm:text-base">Catat pengeluaran untuk melihat breakdown kategori</p>
                                 </div>
                             ` : `
-                                <div class="space-y-4">
-                                    ${topCategories.map(([category, amount], index) => {
-                                        const percentage = (amount / totalExpense) * 100;
-                                        const colors = ['blue', 'green', 'purple', 'red', 'indigo'];
-                                        const color = colors[index % colors.length];
-                                        
-                                        return `
-                                            <div class="flex items-center justify-between p-3 sm:p-4 bg-white/50 rounded-2xl border border-white/30 hover:bg-white/70 transition-all duration-300">
-                                                <div class="flex items-center space-x-3 sm:space-x-4">
-                                                    <div class="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-${color}-400 to-${color}-500 rounded-2xl flex items-center justify-center shadow-lg">
-                                                        <i class="fas fa-${category === 'Makanan' ? 'utensils' : category === 'Transportasi' ? 'car' : category === 'Belanja' ? 'shopping-bag' : category === 'Tagihan' ? 'file-invoice' : 'tag'} text-white text-sm"></i>
+                                <div class="flex flex-col lg:flex-row items-center gap-6">
+                                    <div class="relative h-48 w-48 sm:h-56 sm:w-56 flex-shrink-0">
+                                        <canvas id="categoryDoughnutChart"></canvas>
+                                    </div>
+                                    <div class="w-full flex-1 space-y-2">
+                                        ${topCategories.map(([category, amount], index) => {
+                                            const percentage = (amount / totalExpense) * 100;
+                                            const colors = ['blue', 'green', 'purple', 'red', 'orange'];
+                                            const color = colors[index % colors.length];
+                                            return `
+                                                <div class="flex items-center justify-between p-3 bg-white/50 rounded-xl border border-white/30">
+                                                    <div class="flex items-center space-x-3">
+                                                        <div class="w-3 h-3 bg-${color}-500 rounded-full"></div>
+                                                        <span class="text-sm font-medium text-gray-700">${category}</span>
                                                     </div>
-                                                    <div>
-                                                        <p class="font-semibold text-gray-800 text-sm sm:text-base">${category}</p>
-                                                        <p class="text-xs sm:text-sm text-gray-500">${percentage.toFixed(1)}% dari total</p>
-                                                    </div>
+                                                    <span class="text-sm font-bold text-gray-800">Rp ${(amount * 1000).toLocaleString('id-ID')}</span>
                                                 </div>
-                                                <div class="text-right">
-                                                    <p class="font-bold text-gray-800 text-sm sm:text-base">Rp ${(amount * 1000).toLocaleString('id-ID')}</p>
-                                                    <div class="w-16 sm:w-20 bg-gray-200 rounded-full h-2 mt-1">
-                                                        <div class="bg-gradient-to-r from-${color}-400 to-${color}-500 h-2 rounded-full transition-all duration-300" style="width: ${percentage}%"></div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        `;
-                                    }).join('')}
+                                            `;
+                                        }).join('')}
+                                    </div>
                                 </div>
                             `}
                         </div>
@@ -2834,7 +2743,7 @@
                             </div>
                             <div class="flex items-center justify-between p-3 sm:p-4 bg-white/50 rounded-2xl border border-white/30">
                                 <span class="text-sm sm:text-base font-medium text-gray-700">Bergabung Sejak</span>
-                                <span class="text-sm sm:text-base font-bold text-purple-600">Nov 2024</span>
+                                <span class="text-sm sm:text-base font-bold text-purple-600">${new Date(appState.user.created_at).toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })}</span>
                             </div>
                             <div class="flex items-center justify-between p-3 sm:p-4 bg-white/50 rounded-2xl border border-white/30">
                                 <span class="text-sm sm:text-base font-medium text-gray-700">Dibuat Oleh</span>
@@ -3319,17 +3228,9 @@
                                         <select
                                             id="quick-category"
                                             class="w-full px-4 sm:px-6 py-4 sm:py-5 border-2 border-gray-200 rounded-2xl focus:ring-4 focus:ring-indigo-500/20 focus:border-indigo-500 font-semibold bg-white/80 backdrop-blur-sm transition-all duration-300 group-hover:border-indigo-300 text-sm sm:text-lg shadow-sm"
-                                            required
+                                            required onchange="toggleNewCategoryInput(this.value, 'quick-new-category-container', 'quick-new-category')"
                                         >
-                                            <option value="">✨ Pilih Kategori</option>
-                                            <option value="Makanan">🍽️ Makanan</option>
-                                            <option value="Transportasi">🚗 Transport</option>
-                                            <option value="Belanja">🛍️ Belanja</option>
-                                            <option value="Tagihan">📄 Tagihan</option>
-                                            <option value="Hiburan">🎬 Hiburan</option>
-                                            <option value="Kesehatan">🏥 Kesehatan</option>
-                                            <option value="Pendidikan">📚 Pendidikan</option>
-                                            <option value="Lainnya">📦 Lainnya</option>
+                                            <!-- Options populated by setTransactionType -->
                                         </select>
                                     </div>
                                     
@@ -3351,6 +3252,17 @@
                                     </div>
                                 </div>
                                 
+                                <!-- New Category Input -->
+                                <div id="quick-new-category-container" class="hidden relative group">
+                                    <label class="block text-xs sm:text-sm font-bold text-gray-700 mb-2 sm:mb-3 flex items-center">
+                                        <div class="w-5 h-5 sm:w-6 sm:h-6 bg-gradient-to-r from-purple-400 to-pink-500 rounded-full flex items-center justify-center mr-2 shadow-lg">
+                                            <i class="fas fa-plus text-white text-xs"></i>
+                                        </div>
+                                        Nama Kategori Baru
+                                    </label>
+                                    <input type="text" id="quick-new-category" placeholder="Contoh: Donasi, Investasi" class="w-full px-4 sm:px-6 py-4 sm:py-5 border-2 border-gray-200 rounded-2xl focus:ring-4 focus:ring-indigo-500/20 focus:border-indigo-500 font-medium bg-white/80 backdrop-blur-sm transition-all duration-300 group-hover:border-indigo-300 text-sm sm:text-lg shadow-sm" />
+                                </div>
+
                                 <!-- Description Input -->
                                 <div class="relative group">
                                     <label class="block text-xs sm:text-sm font-bold text-gray-700 mb-2 sm:mb-3 flex items-center">
@@ -3445,30 +3357,8 @@
 
         // Admin Pages
         function renderAdminDashboard() {
-            // Get all users data dynamically
-            const allUsers = [];
-            for (let i = 0; i < localStorage.length; i++) {
-                const key = localStorage.key(i);
-                if (key && key.startsWith('pin_')) {
-                    const emailParts = key.replace('pin_', '').split('_');
-                    if (emailParts.length >= 3) {
-                        const reconstructedEmail = emailParts[0] + '@' + emailParts.slice(1, -1).join('.') + '.' + emailParts[emailParts.length - 1];
-                        if (!allUsers.find(u => u.email === reconstructedEmail)) {
-                            allUsers.push({ email: reconstructedEmail, id: key.replace('pin_', '') });
-                        }
-                    }
-                }
-            }
-
-            let totalUsers = allUsers.length;
-            let totalTransactions = 0;
-            let totalAmount = 0;
-            
-            allUsers.forEach(user => {
-                const userTransactions = JSON.parse(localStorage.getItem(`transactions_${user.id}`) || '[]');
-                totalTransactions += userTransactions.length;
-                totalAmount += userTransactions.reduce((sum, t) => sum + (t.amount || 0), 0);
-            });
+            const { totalUsers, totalTransactions, totalVolume } = appState.systemStats;
+            const avgTransactionsPerUser = totalUsers > 0 ? Math.round(totalTransactions / totalUsers) : 0;
 
             return `
                 <div class="space-y-6 sm:space-y-8 fade-in">
@@ -3496,7 +3386,7 @@
                             </div>
                             <div>
                                 <p class="text-xs sm:text-sm font-medium text-gray-600 mb-2">Total Pengguna</p>
-                                <p class="text-xl sm:text-2xl font-bold text-blue-600">${totalUsers}</p>
+                                <p class="text-xl sm:text-2xl font-bold text-blue-600">${appState.userManagement.totalUsers || 0}</p>
                                 <p class="text-xs text-blue-500 mt-1">Pengguna aktif</p>
                             </div>
                         </div>
@@ -3522,7 +3412,7 @@
                             </div>
                             <div>
                                 <p class="text-xs sm:text-sm font-medium text-gray-600 mb-2">Total Volume</p>
-                                <p class="text-xl sm:text-2xl font-bold text-purple-600">Rp ${(totalAmount * 1000).toLocaleString('id-ID')}</p>
+                                <p class="text-xl sm:text-2xl font-bold text-purple-600">Rp ${(totalVolume * 1000).toLocaleString('id-ID')}</p>
                                 <p class="text-xs text-purple-500 mt-1">Nilai transaksi</p>
                             </div>
                         </div>
@@ -3535,7 +3425,7 @@
                             </div>
                             <div>
                                 <p class="text-xs sm:text-sm font-medium text-gray-600 mb-2">Rata-rata per User</p>
-                                <p class="text-xl sm:text-2xl font-bold text-orange-600">${totalUsers > 0 ? Math.round(totalTransactions / totalUsers) : 0}</p>
+                                <p class="text-xl sm:text-2xl font-bold text-orange-600">${avgTransactionsPerUser}</p>
                                 <p class="text-xs text-orange-500 mt-1">Transaksi/user</p>
                             </div>
                         </div>
@@ -3611,40 +3501,11 @@
                 }
 
                 // Fallback to localStorage if Supabase fails or is not used
-                if (errorState || !useSupabase) {
-                    const localUsers = [];
-                    for (let i = 0; i < localStorage.length; i++) {
-                        const key = localStorage.key(i);
-                        if (key && key.startsWith('pin_')) {
-                            const userId = key.replace('pin_', '');
-                            const emailParts = userId.split('_');
-                            if (emailParts.length >= 3) {
-                                const email = `${emailParts[0]}@${emailParts.slice(1, -1).join('.')}.${emailParts[emailParts.length - 1]}`;
-                                if (!localUsers.some(u => u.id === userId)) {
-                                    // Calculate stats from localStorage to mimic the database view structure
-                                    const userTransactions = JSON.parse(localStorage.getItem(`transactions_${userId}`) || '[]');
-                                    const userBudgets = JSON.parse(localStorage.getItem(`budgets_${userId}`) || '[]');
-                                    const userGoals = JSON.parse(localStorage.getItem(`goals_${userId}`) || '[]');
-                                    const totalVolume = userTransactions.reduce((sum, t) => sum + t.amount, 0);
-
-                                    localUsers.push({
-                                        id: userId,
-                                        email: email,
-                                        role: email === 'admin@frugal.com' ? 'admin' : 'user',
-                                        transaction_count: userTransactions.length,
-                                        budget_count: userBudgets.length,
-                                        goal_count: userGoals.length,
-                                        total_volume: totalVolume
-                                    });
-                                }
-                            }
-                        }
-                    }
-                    localUsers.sort((a, b) => a.email.localeCompare(b.email));
-                    appState.userManagement.totalUsers = localUsers.length;
-                    const start = (currentPage - 1) * usersPerPage;
-                    const end = start + usersPerPage;
-                    usersOnPage = localUsers.slice(start, end);
+                if (errorState) {
+                    // Jika Supabase gagal, tampilkan pesan error dan jangan tampilkan data apa pun.
+                    usersOnPage = [];
+                    appState.userManagement.totalUsers = 0;
+                    showSyncStatus('error', errorState);
                 }
 
                 const totalUsers = appState.userManagement.totalUsers;
@@ -3733,7 +3594,7 @@
                                     const userBudgetsCount = budget_count || 0;
                                     const userGoalsCount = goal_count || 0;
                                     const totalAmount = total_volume || 0;
-                                    const hasPin = !!localStorage.getItem(`pin_${userId}`);
+                                    const hasPin = !!user.pin;
                                     
                                     const isAdminUser = role === 'admin';
                                     const isDefaultUser = ['demo@frugal.com', 'user@example.com', 'test@budget.com'].includes(email);
@@ -3806,6 +3667,7 @@
                 setTimeout(() => {
                     const container = document.getElementById(containerId);
                     if (container) container.innerHTML = content;
+                    if (container) container.__users = usersOnPage; // Store users data on the element for later access
                 }, 100);
             })();
 
@@ -3851,40 +3713,7 @@
 
         function renderSystemReports() {
             // --- Data Aggregation ---
-            const allUsers = [];
-            for (let i = 0; i < localStorage.length; i++) {
-                const key = localStorage.key(i);
-                if (key && key.startsWith('pin_')) {
-                    const emailParts = key.replace('pin_', '').split('_');
-                    if (emailParts.length >= 3) {
-                        const reconstructedEmail = emailParts[0] + '@' + emailParts.slice(1, -1).join('.') + '.' + emailParts[emailParts.length - 1];
-                        if (!allUsers.find(u => u.email === reconstructedEmail)) {
-                            allUsers.push({ email: reconstructedEmail, id: key.replace('pin_', '') });
-                        }
-                    }
-                }
-            }
-
-            let totalTransactions = 0;
-            let totalVolume = 0;
-            const userActivity = [];
-
-            allUsers.forEach(user => {
-                const userTransactions = JSON.parse(localStorage.getItem(`transactions_${user.id}`) || '[]');
-                const transactionCount = userTransactions.length;
-                const userVolume = userTransactions.reduce((sum, t) => sum + t.amount, 0);
-                
-                totalTransactions += transactionCount;
-                totalVolume += userVolume;
-                
-                userActivity.push({
-                    email: user.email,
-                    transactionCount: transactionCount,
-                    volume: userVolume
-                });
-            });
-
-            const topActiveUsers = userActivity.sort((a, b) => b.transactionCount - a.transactionCount).slice(0, 5);
+            const { totalUsers, totalTransactions, totalVolume, topActiveUsers } = appState.systemStats;
 
             // --- Dynamic Chart Data Generation ---
             const transactionActivity = {};
@@ -3901,25 +3730,15 @@
                 };
             }
 
-            // Aggregate transactions by month from all users
-            allUsers.forEach(user => {
-                const userTransactions = JSON.parse(localStorage.getItem(`transactions_${user.id}`) || '[]');
-                userTransactions.forEach(t => {
-                    const d = new Date(t.date);
-                    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-                    if (transactionActivity[key]) {
-                        transactionActivity[key].count++;
-                    }
-                });
-            });
+            // TODO: This data should be aggregated from Supabase for a real report. For now, it's a placeholder.
 
             const dynamicTransactionActivityData = Object.values(transactionActivity);
             const maxActivity = Math.max(1, ...dynamicTransactionActivityData.map(d => d.count));
 
-            // Simulated data for charts
+            // Simulated data for user growth chart
             const userGrowthData = [
                 { month: 'Jul', users: 5 }, { month: 'Agu', users: 8 }, { month: 'Sep', users: 12 },
-                { month: 'Okt', users: 15 }, { month: 'Nov', users: allUsers.length }
+                { month: 'Okt', users: 15 }, { month: 'Nov', users: totalUsers }
             ];
             const maxGrowth = Math.max(1, ...userGrowthData.map(d => d.users));
             
@@ -3940,7 +3759,7 @@
                     
                     <!-- System Stats -->
                     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
-                        <div class="bg-white/70 backdrop-blur-sm rounded-3xl p-6 shadow-xl border border-white/20"><p class="text-sm font-medium text-gray-600 mb-2">Total Pengguna</p><p class="text-3xl font-bold text-blue-600">${allUsers.length}</p></div>
+                        <div class="bg-white/70 backdrop-blur-sm rounded-3xl p-6 shadow-xl border border-white/20"><p class="text-sm font-medium text-gray-600 mb-2">Total Pengguna</p><p class="text-3xl font-bold text-blue-600">${totalUsers}</p></div>
                         <div class="bg-white/70 backdrop-blur-sm rounded-3xl p-6 shadow-xl border border-white/20"><p class="text-sm font-medium text-gray-600 mb-2">Total Transaksi</p><p class="text-3xl font-bold text-green-600">${totalTransactions.toLocaleString('id-ID')}</p></div>
                         <div class="bg-white/70 backdrop-blur-sm rounded-3xl p-6 shadow-xl border border-white/20"><p class="text-sm font-medium text-gray-600 mb-2">Total Volume</p><p class="text-3xl font-bold text-purple-600">Rp ${(totalVolume * 1000).toLocaleString('id-ID')}</p></div>
                         <div class="bg-white/70 backdrop-blur-sm rounded-3xl p-6 shadow-xl border border-white/20"><p class="text-sm font-medium text-gray-600 mb-2">Jumlah Visitor</p><p class="text-3xl font-bold text-orange-600">${visitorCount.toLocaleString('id-ID')}</p></div>
@@ -3984,7 +3803,7 @@
                                     <div class="flex items-center space-x-4 min-w-0">
                                         <span class="font-bold text-gray-500 w-6 text-center">${index + 1}.</span>
                                         <div class="w-10 h-10 bg-gradient-to-br from-indigo-400 to-purple-500 rounded-xl flex items-center justify-center shadow-lg flex-shrink-0">
-                                            <i class="fas fa-user text-white"></i>
+                                            <i class="fas fa-user text-white text-sm"></i>
                                         </div>
                                         <div class="min-w-0">
                                             <p class="font-semibold text-gray-800 truncate" title="${user.email}">${user.email}</p>
@@ -3992,7 +3811,7 @@
                                         </div>
                                     </div>
                                     <div class="text-left sm:text-right pl-12 sm:pl-0">
-                                        <p class="font-bold text-blue-600">${user.transactionCount} Transaksi</p>
+                                        <p class="font-bold text-blue-600">${user.transaction_count || 0} Transaksi</p>
                                     </div>
                                 </div>
                             `).join('')}
@@ -4019,8 +3838,8 @@
             const result = await auth.login(email);
             
             if (result.success) {
-                loadUserData();
-                render();
+                await loadUserData();
+                render(); // Render dashboard
             } else if (result.needPin) {
                 errorDiv.classList.add('hidden');
                 showPinModal(email);
@@ -4032,17 +3851,24 @@
 
         async function quickLogin(email) {
             console.log('🚀 Quick login attempt for:', email);
+            const errorDiv = document.getElementById('error-message');
+            const errorText = document.getElementById('error-text');
+
             const result = await auth.login(email);
             console.log('📋 Login result:', result);
             
             if (result.success) {
-                loadUserData();
+                await loadUserData();
                 render();
             } else if (result.needPin) {
+                if (errorDiv) errorDiv.classList.add('hidden');
                 console.log('🔐 Showing PIN modal for:', email);
                 showPinModal(email);
             } else {
-                console.error('❌ Login failed:', result.error);
+                if (errorDiv && errorText) {
+                    errorText.textContent = result.error || 'Login gagal.';
+                    errorDiv.classList.remove('hidden');
+                }
             }
         }
 
@@ -4205,8 +4031,8 @@
 
             if (result.success) {
                 event.target.closest('.fixed').remove();
-                loadUserData();
-                render();
+                await loadUserData();
+                render(); // Render dashboard
             } else {
                 errorDiv.querySelector('span').textContent = result.error || 'PIN yang Anda masukkan salah';
                 errorDiv.classList.remove('hidden');
@@ -4227,9 +4053,24 @@
         }
 
         function navigateTo(page) {
-            appState.currentPage = page;
-            appState.sidebarOpen = false;
-            render();
+            if (appState.currentPage === page) return; // Jangan lakukan apa-apa jika halaman sama
+
+            const pageContent = document.getElementById('page-content');
+            if (pageContent) {
+                pageContent.classList.remove('page-fade-in');
+                pageContent.classList.add('page-fade-out');
+
+                setTimeout(() => {
+                    appState.currentPage = page;
+                    appState.sidebarOpen = false;
+                    render();
+                }, 300); // Durasi harus cocok dengan animasi pageFadeOut
+            } else {
+                // Fallback jika page-content tidak ditemukan
+                appState.currentPage = page;
+                appState.sidebarOpen = false;
+                render();
+            }
         }
 
         function toggleSidebar() {
@@ -4255,31 +4096,27 @@
             const incomeBtn = document.getElementById('income-btn');
             const categorySelect = document.getElementById('quick-category');
             
+            // Hide the new category input initially and ensure it's not required
+            toggleNewCategoryInput('', 'quick-new-category-container', 'quick-new-category');
+
+            const expenseCategories = getUniqueCategories('expense');
+            const incomeCategories = getUniqueCategories('income');
+
             if (type === 'expense') {
                 expenseBtn.className = 'flex-1 py-4 px-6 rounded-2xl font-bold transition-all duration-300 relative overflow-hidden bg-gradient-to-r from-red-500 to-rose-600 text-white shadow-lg transform scale-105';
                 incomeBtn.className = 'flex-1 py-4 px-6 rounded-2xl font-bold transition-all duration-300 text-gray-600 hover:text-gray-800';
                 categorySelect.innerHTML = `
                     <option value="">✨ Pilih Kategori</option>
-                    <option value="Makanan">🍽️ Makanan & Minuman</option>
-                    <option value="Transportasi">🚗 Transportasi</option>
-                    <option value="Belanja">🛍️ Belanja</option>
-                    <option value="Tagihan">📄 Tagihan & Utilitas</option>
-                    <option value="Hiburan">🎬 Hiburan</option>
-                    <option value="Kesehatan">🏥 Kesehatan</option>
-                    <option value="Pendidikan">📚 Pendidikan</option>
-                    <option value="Lainnya">📦 Lainnya</option>
+                    ${expenseCategories.map(cat => `<option value="${cat}">${getCategoryEmoji(cat)} ${cat}</option>`).join('')}
+                    <option value="--add-new--">➕ Tambah Kategori Baru...</option>
                 `;
             } else {
                 incomeBtn.className = 'flex-1 py-4 px-6 rounded-2xl font-bold transition-all duration-300 relative overflow-hidden bg-gradient-to-r from-green-500 to-emerald-600 text-white shadow-lg transform scale-105';
                 expenseBtn.className = 'flex-1 py-4 px-6 rounded-2xl font-bold transition-all duration-300 text-gray-600 hover:text-gray-800';
                 categorySelect.innerHTML = `
                     <option value="">✨ Pilih Kategori</option>
-                    <option value="Gaji">💰 Gaji & Upah</option>
-                    <option value="Freelance">💻 Freelance</option>
-                    <option value="Investasi">📈 Investasi & Dividen</option>
-                    <option value="Hadiah">🎁 Hadiah & Bonus</option>
-                    <option value="Bisnis">🏪 Bisnis Sampingan</option>
-                    <option value="Lainnya">📦 Lainnya</option>
+                    ${incomeCategories.map(cat => `<option value="${cat}">${getCategoryEmoji(cat)} ${cat}</option>`).join('')}
+                    <option value="--add-new--">➕ Tambah Kategori Baru...</option>
                 `;
             }
         }
@@ -4287,11 +4124,20 @@
         function handleQuickAdd(event) {
             event.preventDefault();
             
+            let category = document.getElementById('quick-category').value.trim();
+            if (category === '--add-new--') {
+                category = document.getElementById('quick-new-category').value.trim();
+                if (!category) {
+                    showSyncStatus('error', 'Nama kategori baru tidak boleh kosong.');
+                    return;
+                }
+            }
+
             const transaction = {
                 type: currentTransactionType,
                 amount: parseFloat(document.getElementById('quick-amount').value) / 1000,
-                category: document.getElementById('quick-category').value,
-                description: document.getElementById('quick-description').value,
+                category: category,
+                description: document.getElementById('quick-description').value.trim(),
                 date: document.getElementById('quick-date').value
             };
             
@@ -4350,8 +4196,17 @@
         function handleAddBudget(event) {
             event.preventDefault();
             
+            let category = document.getElementById('budget-category').value.trim();
+            if (category === '--add-new--') {
+                category = document.getElementById('budget-new-category').value.trim();
+                if (!category) {
+                    showSyncStatus('error', 'Nama kategori baru tidak boleh kosong.');
+                    return;
+                }
+            }
+
             const budget = {
-                category: document.getElementById('budget-category').value.trim(),
+                category: category,
                 amount: parseFloat(document.getElementById('budget-amount').value) / 1000,
                 description: document.getElementById('budget-description').value.trim(),
                 period: document.getElementById('budget-period').value
@@ -4556,7 +4411,7 @@
         }
 
         function handleAddReceivable(event) {
-            event.preventDefault();
+            event.preventDefault(); // Corrected from event.preventDefault
             
             const receivable = {
                 debtor_name: document.getElementById('receivable-debtor').value.trim(),
@@ -4567,7 +4422,6 @@
             
             createReceivable(receivable); // Changed from saveReceivable to match convention
             hideAddReceivableForm();
-            // render() dipanggil di dalam createReceivable
         }
 
         function handleAddDebt(event) {
@@ -4592,29 +4446,22 @@
         async function createReceivable(receivable) { // Renamed from saveReceivable
             if (!appState.user) return;
             
-            const userId = appState.user.id;
             receivable.id = Date.now();
-            receivable.user_id = userId;
+            receivable.user_id = appState.user.id;
             receivable.status = 'unpaid';
             receivable.created_at = new Date().toISOString();
             
-            appState.receivables.push(receivable);
-            
             try {
-                localStorage.setItem(`receivables_${userId}`, JSON.stringify(appState.receivables));
-                
                 if (useSupabase) {
                     const { data, error } = await db.createReceivable(receivable);
                     if (error) {
                         showSyncStatus('error', 'Gagal sync piutang ke cloud');
                         console.error('Supabase receivable create error:', error);
-                        appState.receivables.pop(); // Rollback jika Supabase gagal
-                        localStorage.setItem(`receivables_${userId}`, JSON.stringify(appState.receivables));
                     } else {
+                        await loadUserData();
+                        render();
                         showSyncStatus('success', 'Piutang dicatat & disinkronisasi');
                     }
-                } else {
-                    showSyncStatus('success', 'Piutang berhasil dicatat (lokal)');
                 }
             } catch (error) {
                 console.error('Error creating receivable:', error);
@@ -4711,38 +4558,26 @@
         async function handleUpdateTransaction(event, transactionId) {
             event.preventDefault();
 
-            const transactionIndex = appState.transactions.findIndex(t => t.id === transactionId);
-            if (transactionIndex === -1) return;
-
-            const originalTransaction = { ...appState.transactions[transactionIndex] };
-            
             const updates = {
                 amount: parseFloat(document.getElementById('edit-transaction-amount').value) / 1000,
                 date: document.getElementById('edit-transaction-date').value,
-                category: document.getElementById('edit-transaction-category').value,
-                description: document.getElementById('edit-transaction-description').value,
+                category: document.getElementById('edit-transaction-category').value.trim(),
+                description: document.getElementById('edit-transaction-description').value.trim(),
                 updated_at: new Date().toISOString()
             };
 
-            // Optimistic UI update
-            appState.transactions[transactionIndex] = { ...originalTransaction, ...updates };
-            localStorage.setItem(`transactions_${appState.user.id}`, JSON.stringify(appState.transactions));
             document.getElementById('edit-transaction-modal').remove();
-            render();
 
             if (useSupabase) {
                 const { error } = await db.updateTransaction(transactionId, updates);
                 if (error) {
                     console.error('❌ Error updating transaction:', error);
                     showSyncStatus('error', 'Gagal update. Data dikembalikan.');
-                    appState.transactions[transactionIndex] = originalTransaction; // Rollback
-                    localStorage.setItem(`transactions_${appState.user.id}`, JSON.stringify(appState.transactions));
-                    render();
                 } else {
+                    await loadUserData();
+                    render();
                     showSyncStatus('success', 'Transaksi berhasil diperbarui & disinkronisasi.');
                 }
-            } else {
-                showSyncStatus('success', 'Transaksi berhasil diperbarui (lokal).');
             }
         }
 
@@ -4765,7 +4600,7 @@
             event.preventDefault();
             
             const goal = {
-                title: document.getElementById('goal-title').value,
+                title: document.getElementById('goal-title').value.trim(),
                 target_amount: parseFloat(document.getElementById('goal-target').value) / 1000,
                 current_amount: parseFloat(document.getElementById('goal-current').value || 0) / 1000,
                 deadline: document.getElementById('goal-deadline').value
@@ -4773,7 +4608,6 @@
             
             createGoal(goal);
             hideAddGoalForm();
-            // render() dipanggil di dalam createGoal
         }
 
         function handleAddFundsToGoal(goalId) {
@@ -4819,25 +4653,17 @@
                 isDestructive: true,
                 onConfirm: async () => {
                     if (!appState.user) return;
-                    const userId = appState.user.id;
-                    const originalGoals = [...appState.goals];
-                    appState.goals = appState.goals.filter(g => g.id !== goalId);
-                    render(); // Optimistic UI update
-
-                    localStorage.setItem(`goals_${userId}`, JSON.stringify(appState.goals));
 
                     if (useSupabase) {
                         const { error } = await db.deleteGoal(goalId);
                         if (error) {
                             console.error('❌ Error deleting goal:', error);
-                            showSyncStatus('error', 'Gagal menghapus. Data dikembalikan.');
-                            appState.goals = originalGoals; // Rollback
-                            render();
+                            showSyncStatus('error', 'Gagal menghapus target.');
                         } else {
+                            await loadUserData();
+                            render();
                             showSyncStatus('success', 'Target dihapus & disinkronisasi.');
                         }
-                    } else {
-                        showSyncStatus('success', 'Target berhasil dihapus (lokal).');
                     }
                 }
             });
@@ -4931,7 +4757,7 @@
 
             // Get updated values from the form
             const updates = {
-                title: document.getElementById('edit-goal-title').value,
+                title: document.getElementById('edit-goal-title').value.trim(),
                 target_amount: parseFloat(document.getElementById('edit-goal-target').value) / 1000,
                 current_amount: parseFloat(document.getElementById('edit-goal-current').value || 0) / 1000,
                 deadline: document.getElementById('edit-goal-deadline').value
@@ -4949,31 +4775,21 @@
         async function updateGoal(goalId, updates) {
             if (!appState.user) return;
 
-            const userId = appState.user.id;
-            const goalIndex = appState.goals.findIndex(g => g.id === goalId);
-            if (goalIndex === -1) return;
-
-            const originalGoal = { ...appState.goals[goalIndex] };
-            appState.goals[goalIndex] = { ...appState.goals[goalIndex], ...updates, updated_at: new Date().toISOString() };
-
             try {
-                localStorage.setItem(`goals_${userId}`, JSON.stringify(appState.goals));
-
                 if (useSupabase) {
                     const { data, error } = await db.updateGoal(goalId, updates);
                     if (error) {
                         showSyncStatus('error', 'Gagal sync update target');
                         console.error('Supabase goal update error:', error);
-                        // Rollback jika Supabase gagal
-                        appState.goals[goalIndex] = originalGoal;
-                        localStorage.setItem(`goals_${userId}`, JSON.stringify(appState.goals));
+                    } else {
+                        await loadUserData();
+                        render();
+                        showSyncStatus('success', 'Target berhasil diperbarui.');
                     }
                 }
-                showSyncStatus('success', 'Target berhasil diperbarui.');
             } catch (error) {
                 console.error('Error updating goal:', error);
                 showSyncStatus('error', 'Gagal memperbarui target');
-                appState.goals[goalIndex] = originalGoal; // Rollback
             } finally {
                 render();
             }
@@ -4985,17 +4801,21 @@
                 message: 'PERINGATAN! Anda akan menghapus semua data (transaksi, anggaran, target) untuk akun ini.\n\nTindakan ini tidak dapat dibatalkan.',
                 confirmText: 'Ya, Hapus Semua',
                 isDestructive: true,
-                onConfirm: () => {
+                onConfirm: async () => {
                     if (appState.user) {
                         const userId = appState.user.id;
-                        localStorage.removeItem(`transactions_${userId}`);
-                        localStorage.removeItem(`budgets_${userId}`);
-                        localStorage.removeItem(`goals_${userId}`);
-                        localStorage.removeItem(`receivables_${userId}`);
-                        localStorage.removeItem(`debts_${userId}`);
+                        // Hapus semua data dari Supabase
+                        await Promise.all([
+                            supabase.from('transactions').delete().eq('user_id', userId),
+                            supabase.from('budgets').delete().eq('user_id', userId),
+                            supabase.from('goals').delete().eq('user_id', userId),
+                            supabase.from('receivables').delete().eq('user_id', userId),
+                            supabase.from('debts').delete().eq('user_id', userId)
+                        ]);
+
                         Object.assign(appState, { transactions: [], budgets: [], goals: [], receivables: [], debts: [] });
                         render();
-                        showSyncStatus('success', 'Semua data berhasil dihapus.');
+                        showSyncStatus('success', 'Semua data berhasil dihapus dari cloud.');
                     }
                 }
             });
@@ -5186,8 +5006,7 @@
             const newPin = document.getElementById('new-pin-change').value;
             const confirmPin = document.getElementById('confirm-pin-change').value;
             
-            // Verify old PIN by hashing it and comparing with the stored hash
-            const currentPinHash = localStorage.getItem(`pin_${appState.user.id}`);
+            const currentPinHash = appState.user.pin;
             const hashedOldPin = await hasher.hashPin(oldPin, appState.user.id);
             if (hashedOldPin !== currentPinHash) {
                 showSyncStatus('error', 'PIN lama tidak benar.');
@@ -5234,18 +5053,19 @@
             const name = document.getElementById('full-name').value;
             const currency = document.getElementById('currency').value;
             const theme = document.getElementById('theme').value;
-            
+
             if (appState.user) {
                 const userId = appState.user.id;
-                // Update app state
-                appState.profile = { name, currency, theme };
-                
-                // Save to localStorage
-                localStorage.setItem(`profile_${userId}`, JSON.stringify({
-                    name,
-                    currency,
-                    theme
-                }));
+                const updates = { name, currency, theme };
+
+                // Save to Supabase
+                db.updateUser(userId, updates).then(({ data, error }) => {
+                    if (error) {
+                        showSyncStatus('error', 'Gagal menyimpan pengaturan profil.');
+                    } else {
+                        showSyncStatus('success', 'Pengaturan profil berhasil disimpan!');
+                    }
+                });
                 
                 // Apply theme immediately
                 applyTheme(theme);
@@ -5536,9 +5356,9 @@
             }
             
             // Check if user already exists
-            const userId = email.replace(/[@.]/g, '_');
-            if (localStorage.getItem(`pin_${userId}`)) {
-                showSyncStatus('error', 'User dengan email ini sudah ada!');
+            const { data: existingUser } = await db.getUserByEmail(email);
+            if (existingUser) {
+                showSyncStatus('error', 'Pengguna dengan email ini sudah ada di database.');
                 return;
             }
             
@@ -5548,14 +5368,9 @@
                 return;
             }
             
+            const userId = email.replace(/[@.]/g, '_');
             try {
-                const hashedPin = await hasher.hashPin(pin, userId);
-
-                // Always save to localStorage for the PIN system to work
-                localStorage.setItem(`pin_${userId}`, hashedPin);
-                if (name) {
-                    localStorage.setItem(`profile_${userId}`, JSON.stringify({ name, currency: 'IDR', theme: 'light' }));
-                }
+                const hashedPin = await hasher.hashPin(pin, userId); // Hash PIN
 
                 // If Supabase is used, create the user there as well
                 if (useSupabase) {
@@ -5563,7 +5378,7 @@
                     const { data, error } = await db.createUser({
                         id: userId,
                         email: email,
-                        name: name || null, // Store name in Supabase
+                        name: name || null,
                         pin: hashedPin, // Store hashed PIN in Supabase
                         role: 'user'
                     });
@@ -5575,13 +5390,11 @@
                         console.log('✅ User created in Supabase:', data);
                         showSyncStatus('success', `User ${email} berhasil dibuat & disinkronisasi!`);
                     }
-                } else {
-                    showSyncStatus('success', `User ${email} berhasil dibuat (lokal)!`);
                 }
 
                 // Close modal and re-render
                 event.target.closest('.fixed').remove();
-                render();
+                render(); // Re-render user management page
             } catch (error) {
                 console.error('❌ Error creating user:', error);
                 showSyncStatus('error', 'Gagal membuat user.');
@@ -5600,7 +5413,6 @@
                     
                     try {
                         const hashedPin = await hasher.hashPin(pin, userId);
-                        localStorage.setItem(`pin_${userId}`, hashedPin);
 
                         if (useSupabase) {
                             const { error } = await db.updateUser(userId, { pin: hashedPin });
@@ -5673,15 +5485,6 @@
                     if (appState.user?.role !== 'admin') return;
                     const userId = email.replace(/[@.]/g, '_');
                     
-                    // Remove all user data from localStorage
-                    localStorage.removeItem(`pin_${userId}`);
-                    localStorage.removeItem(`transactions_${userId}`);
-                    localStorage.removeItem(`budgets_${userId}`);
-                    localStorage.removeItem(`goals_${userId}`);
-                    localStorage.removeItem(`profile_${userId}`);
-                    localStorage.removeItem(`receivables_${userId}`);
-                    localStorage.removeItem(`debts_${userId}`);
-                    
                     // Remove user from Supabase
                     if (useSupabase) {
                         const { error } = await db.deleteUser(userId);
@@ -5693,7 +5496,7 @@
                     }
                     
                     showSyncStatus('success', `User ${email} dan semua datanya berhasil dihapus!`);
-                    render(); // Refresh the page
+                    render(); // Refresh the user list
                 }
             });
         }
@@ -5791,32 +5594,23 @@
             if (form) form.classList.add('hidden');
         }
 
-        function viewUserDetails(email) {
-            const userId = email.replace(/[@.]/g, '_');
-            const userTransactions = JSON.parse(localStorage.getItem(`transactions_${userId}`) || '[]');
-            const userBudgets = JSON.parse(localStorage.getItem(`budgets_${userId}`) || '[]');
-            const userGoals = JSON.parse(localStorage.getItem(`goals_${userId}`) || '[]');
-            const userProfile = JSON.parse(localStorage.getItem(`profile_${userId}`) || '{}');
-            const hasPin = !!localStorage.getItem(`pin_${userId}`);
-            
-            const totalIncome = userTransactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
-            const totalExpense = userTransactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
-            const balance = totalIncome - totalExpense;
+        function viewUserDetails(userEmail) {
+            // Find the user object from the fetched list in user management
+            const user = document.getElementById('user-management-container').__users.find(u => u.email === userEmail);
+            if (!user) {
+                showSyncStatus('error', 'Data pengguna tidak ditemukan.');
+                return;
+            }
+
+            const { id: userId, email, name, pin, currency, theme, transaction_count, budget_count, goal_count, total_volume, created_at } = user;
+            const hasPin = !!pin;
             
             const modal = document.createElement('div');
             modal.innerHTML = `
                 <div class="fixed inset-0 bg-black/60 backdrop-blur-lg flex items-center justify-center p-4 z-50 animate-fadeIn">
                     <div class="bg-white/95 backdrop-blur-3xl rounded-3xl p-6 sm:p-8 w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl border border-white/40 animate-slideUp">
                         <div class="flex items-center justify-between mb-6">
-                            <div class="flex items-center space-x-4">
-                                <div class="w-16 h-16 bg-gradient-to-br from-blue-400 to-indigo-500 rounded-3xl flex items-center justify-center shadow-lg">
-                                    <i class="fas fa-user text-white text-2xl"></i>
-                                </div>
-                                <div>
-                                    <h3 class="text-xl font-bold text-gray-800">${email}</h3>
-                                    <p class="text-gray-600 text-sm">Detail Pengguna & Aktivitas</p>
-                                </div>
-                            </div>
+                            <h3 class="text-xl font-bold text-gray-800">Detail Pengguna: ${email}</h3>
                             <button onclick="this.closest('.fixed').remove()" class="text-gray-500 hover:text-gray-700 p-2 rounded-xl hover:bg-gray-100 transition-all duration-300">
                                 <i class="fas fa-times text-xl"></i>
                             </button>
@@ -5824,31 +5618,11 @@
                         
                         <!-- User Stats -->
                         <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-                            <div class="bg-gradient-to-br from-green-50 to-emerald-50 p-4 rounded-2xl border border-green-200">
-                                <div class="flex items-center justify-between">
-                                    <div>
-                                        <p class="text-xs font-medium text-green-600 mb-1">Total Pemasukan</p>
-                                        <p class="text-lg font-bold text-green-700">Rp ${totalIncome.toLocaleString('id-ID')}</p>
-                                    </div>
-                                    <i class="fas fa-arrow-up text-green-500 text-xl"></i>
-                                </div>
-                            </div>
-                            
-                            <div class="bg-gradient-to-br from-red-50 to-rose-50 p-4 rounded-2xl border border-red-200">
-                                <div class="flex items-center justify-between">
-                                    <div>
-                                        <p class="text-xs font-medium text-red-600 mb-1">Total Pengeluaran</p>
-                                        <p class="text-lg font-bold text-red-700">Rp ${totalExpense.toLocaleString('id-ID')}</p>
-                                    </div>
-                                    <i class="fas fa-arrow-down text-red-500 text-xl"></i>
-                                </div>
-                            </div>
-                            
                             <div class="bg-gradient-to-br from-blue-50 to-indigo-50 p-4 rounded-2xl border border-blue-200">
                                 <div class="flex items-center justify-between">
                                     <div>
-                                        <p class="text-xs font-medium text-blue-600 mb-1">Saldo Bersih</p>
-                                        <p class="text-lg font-bold text-blue-700">Rp ${balance.toLocaleString('id-ID')}</p>
+                                        <p class="text-xs font-medium text-blue-600 mb-1">Total Volume Transaksi</p>
+                                        <p class="text-lg font-bold text-blue-700">Rp ${(total_volume * 1000).toLocaleString('id-ID')}</p>
                                     </div>
                                     <i class="fas fa-wallet text-blue-500 text-xl"></i>
                                 </div>
@@ -5869,7 +5643,7 @@
                                 </div>
                                 <div class="flex justify-between">
                                     <span class="text-gray-600">Nama:</span>
-                                    <span class="font-medium">${userProfile.name || 'Tidak diset'}</span>
+                                    <span class="font-medium">${name || 'Tidak diset'}</span>
                                 </div>
                                 <div class="flex justify-between">
                                     <span class="text-gray-600">Keamanan PIN:</span>
@@ -5879,11 +5653,15 @@
                                 </div>
                                 <div class="flex justify-between">
                                     <span class="text-gray-600">Mata Uang:</span>
-                                    <span class="font-medium">${userProfile.currency || 'IDR'}</span>
+                                    <span class="font-medium">${currency || 'IDR'}</span>
                                 </div>
                                 <div class="flex justify-between">
                                     <span class="text-gray-600">Tema:</span>
-                                    <span class="font-medium capitalize">${userProfile.theme || 'Light'}</span>
+                                    <span class="font-medium capitalize">${theme || 'Light'}</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-gray-600">Bergabung:</span>
+                                    <span class="font-medium">${new Date(created_at).toLocaleDateString('id-ID')}</span>
                                 </div>
                             </div>
                         </div>
@@ -5893,44 +5671,19 @@
                             <h4 class="font-semibold text-gray-800 mb-3">Ringkasan Aktivitas</h4>
                             <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
                                 <div class="text-center p-3 bg-white rounded-xl">
-                                    <div class="text-2xl font-bold text-blue-600">${userTransactions.length}</div>
+                                    <div class="text-2xl font-bold text-blue-600">${transaction_count || 0}</div>
                                     <div class="text-gray-600">Transaksi</div>
                                 </div>
                                 <div class="text-center p-3 bg-white rounded-xl">
-                                    <div class="text-2xl font-bold text-green-600">${userBudgets.length}</div>
+                                    <div class="text-2xl font-bold text-green-600">${budget_count || 0}</div>
                                     <div class="text-gray-600">Anggaran</div>
                                 </div>
                                 <div class="text-center p-3 bg-white rounded-xl">
-                                    <div class="text-2xl font-bold text-purple-600">${userGoals.length}</div>
+                                    <div class="text-2xl font-bold text-purple-600">${goal_count || 0}</div>
                                     <div class="text-gray-600">Target</div>
                                 </div>
                             </div>
                         </div>
-                        
-                        <!-- Recent Transactions -->
-                        ${userTransactions.length > 0 ? `
-                            <div class="mt-6">
-                                <h4 class="font-semibold text-gray-800 mb-3">Transaksi Terbaru</h4>
-                                <div class="space-y-2 max-h-40 overflow-y-auto">
-                                    ${userTransactions.slice(-5).reverse().map(t => `
-                                        <div class="flex items-center justify-between p-3 bg-white rounded-xl border">
-                                            <div class="flex items-center space-x-3">
-                                                <div class="w-8 h-8 bg-gradient-to-br from-${t.type === 'income' ? 'green' : 'red'}-400 to-${t.type === 'income' ? 'emerald' : 'rose'}-500 rounded-xl flex items-center justify-center">
-                                                    <i class="fas fa-${t.type === 'income' ? 'arrow-up' : 'arrow-down'} text-white text-xs"></i>
-                                                </div>
-                                                <div>
-                                                    <p class="font-medium text-gray-800 text-sm">${t.description}</p>
-                                                    <p class="text-xs text-gray-500">${t.category} • ${new Date(t.date).toLocaleDateString('id-ID')}</p>
-                                                </div>
-                                            </div>
-                                            <span class="font-bold text-${t.type === 'income' ? 'green' : 'red'}-600 text-sm">
-                                                ${t.type === 'income' ? '+' : '-'}Rp ${t.amount.toLocaleString('id-ID')}
-                                            </span>
-                                        </div>
-                                    `).join('')}
-                                </div>
-                            </div>
-                        ` : ''}
                     </div>
                 </div>
             `;
@@ -6185,27 +5938,16 @@
         function checkDataIntegrity() {
             if (!appState.user) return false;
             
-            const userId = appState.user.id;
-            const storedTransactions = localStorage.getItem(`transactions_${userId}`);
-            const storedBudgets = localStorage.getItem(`budgets_${userId}`);
-            const storedGoals = localStorage.getItem(`goals_${userId}`);
-            
-            console.log('🔍 Data Integrity Check for user:', userId);
-            console.log('📊 Stored Transactions:', storedTransactions ? JSON.parse(storedTransactions).length : 0);
-            console.log('💰 Stored Budgets:', storedBudgets ? JSON.parse(storedBudgets).length : 0);
-            console.log('🎯 Stored Goals:', storedGoals ? JSON.parse(storedGoals).length : 0);
-            console.log('🔄 Current App State:', {
+            console.log('🔍 Data Integrity Check for user:', appState.user.id);
+            console.log('🔄 Current App State (from Supabase):', {
                 transactions: appState.transactions.length,
                 budgets: appState.budgets.length,
-                goals: appState.goals.length
+                goals: appState.goals.length,
+                receivables: appState.receivables.length,
+                debts: appState.debts.length
             });
-            
-            return {
-                transactions: storedTransactions ? JSON.parse(storedTransactions) : [],
-                budgets: storedBudgets ? JSON.parse(storedBudgets) : [],
-                goals: storedGoals ? JSON.parse(storedGoals) : [],
-                receivables: JSON.parse(localStorage.getItem(`receivables_${userId}`) || '[]')
-            };
+            showSyncStatus('success', 'Data state saat ini telah dicatat di konsol.');
+            return appState;
         }
 
         // Export all localStorage data for debugging
@@ -6245,9 +5987,14 @@
         // Main render function
         function render() {
             const app = document.getElementById('app');
-            
+
             if (appState.isLoading) {
                 app.innerHTML = renderLoadingScreen();
+                return;
+            }
+
+            if (!useSupabase) {
+                app.innerHTML = renderSetupRequiredPage();
                 return;
             }
 
@@ -6255,6 +6002,10 @@
                 app.innerHTML = renderLoginPage();
             } else {
                 app.innerHTML = renderDashboard();
+                // Initialize charts if on the reports page
+                if (appState.currentPage === 'reports') {
+                    setTimeout(initReportsCharts, 0); // Use timeout to ensure canvas is in DOM
+                }
             }
         }
 
@@ -6317,6 +6068,110 @@
             showSyncStatus('success', 'Data berhasil dimuat ulang dari storage');
         }
 
+        // Chart.js initialization
+        function initReportsCharts() {
+            // Destroy existing charts to prevent memory leaks and rendering issues
+            if (window.monthlyTrendChartInstance) window.monthlyTrendChartInstance.destroy();
+            if (window.categoryDoughnutChartInstance) window.categoryDoughnutChartInstance.destroy();
+
+            // --- Monthly Trend Chart (Bar Chart) ---
+            const trendCtx = document.getElementById('monthlyTrendChart');
+            if (trendCtx) {
+                const trendData = {};
+                const monthNames = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+                const today = new Date();
+                for (let i = 5; i >= 0; i--) {
+                    const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+                    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+                    trendData[key] = { label: monthNames[d.getMonth()], income: 0, expense: 0 };
+                }
+                appState.transactions.forEach(t => {
+                    const d = new Date(t.date);
+                    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+                    if (trendData[key]) { trendData[key][t.type] += t.amount; }
+                });
+
+                const trendValues = Object.values(trendData);
+                const labels = trendValues.map(d => d.label);
+                const incomeData = trendValues.map(d => d.income);
+                const expenseData = trendValues.map(d => d.expense);
+
+                window.monthlyTrendChartInstance = new Chart(trendCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: labels,
+                        datasets: [
+                            { label: 'Pemasukan', data: incomeData, backgroundColor: 'rgba(34, 197, 94, 0.7)', borderColor: 'rgba(22, 163, 74, 1)', borderWidth: 2, borderRadius: 5 },
+                            { label: 'Pengeluaran', data: expenseData, backgroundColor: 'rgba(239, 68, 68, 0.7)', borderColor: 'rgba(220, 38, 38, 1)', borderWidth: 2, borderRadius: 5 }
+                        ]
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        scales: { y: { beginAtZero: true, ticks: { callback: value => 'Rp ' + (value * 1000).toLocaleString('id-ID') } } },
+                        plugins: {
+                            tooltip: {
+                                callbacks: {
+                                    label: context => `${context.dataset.label}: Rp ${(context.parsed.y * 1000).toLocaleString('id-ID')}`
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+
+            // --- Category Doughnut Chart ---
+            const categoryCtx = document.getElementById('categoryDoughnutChart');
+            if (categoryCtx) {
+                const expensesByCategory = {};
+                appState.transactions.filter(t => t.type === 'expense').forEach(t => {
+                    expensesByCategory[t.category] = (expensesByCategory[t.category] || 0) + t.amount;
+                });
+                const topCategories = Object.entries(expensesByCategory).sort(([,a], [,b]) => b - a).slice(0, 5);
+                
+                if (topCategories.length > 0) {
+                    const labels = topCategories.map(([category]) => category);
+                    const data = topCategories.map(([, amount]) => amount);
+
+                    window.categoryDoughnutChartInstance = new Chart(categoryCtx, {
+                        type: 'doughnut',
+                        data: {
+                            labels: labels,
+                            datasets: [{
+                                label: 'Pengeluaran',
+                                data: data,
+                                backgroundColor: [
+                                    'rgba(59, 130, 246, 0.8)',  // blue-500
+                                    'rgba(34, 197, 94, 0.8)',   // green-500
+                                    'rgba(168, 85, 247, 0.8)',  // purple-500
+                                    'rgba(239, 68, 68, 0.8)',   // red-500
+                                    'rgba(249, 115, 22, 0.8)'   // orange-500
+                                ],
+                                borderColor: '#ffffff',
+                                borderWidth: 4,
+                            }]
+                        },
+                        options: {
+                            responsive: true, maintainAspectRatio: false, cutout: '60%',
+                            plugins: {
+                                legend: { display: false },
+                                tooltip: {
+                                    callbacks: {
+                                        label: context => {
+                                            const label = context.label || '';
+                                            const value = context.parsed || 0;
+                                            const total = context.chart.data.datasets[0].data.reduce((a, b) => a + b, 0);
+                                            const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+                                            return `${label}: Rp ${(value * 1000).toLocaleString('id-ID')} (${percentage}%)`;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    });
+                }
+            }
+        }
+
         // Global debug functions for console access
         window.debugFrugal = {
             checkData: checkDataIntegrity,
@@ -6344,36 +6199,11 @@
             }
         };
 
-        // Initialize default PINs on app startup
-        function initializeDefaultPins() {
-            // These are pre-hashed values.
-            const defaultUsers = [
-                { email: 'demo@frugal.com', pinHash: 'c1c224b03cd9bc7b6a86d77f5dace40191766c485cd55dc48caf9ac873335d6f' }, // PIN: 123456
-                { email: 'admin@frugal.com', pinHash: '1304a79c9c649961c3238353a387515885363c3743638203158671f932e01361' }, // PIN: 999999
-                { email: 'user@example.com', pinHash: 'd4067933e56d3916f5187499595252c5ac744153302671563f1395701693121a' }, // PIN: 000000
-                { email: 'test@budget.com', pinHash: '73946f7a554c70699ac5b803b8743545190c4b7e9d3d91c62f12354999815033' }  // PIN: 000000
-            ];
-            
-            defaultUsers.forEach(user => {
-                const userId = user.email.replace(/[@.]/g, '_');
-                const existingPin = localStorage.getItem(`pin_${userId}`);
-                
-                if (!existingPin) {
-                    localStorage.setItem(`pin_${userId}`, user.pinHash);
-                    console.log(`🔑 Initialized hashed PIN for ${user.email}.`);
-                } else {
-                    console.log(`✅ PIN already exists for ${user.email}: ${existingPin}`);
-                }
-            });
-        }
-
         // Initialize app
-        initializeDefaultPins();
-        
         async function startApp() {
             render(); // Tampilkan loading screen pertama kali
             
-            await auth.init(); // Muat data pengguna dan data lainnya
+            // Tidak ada lagi auth.init() karena sesi tidak disimpan
             
             // TODO: Implement recurring transactions check here
             // await checkAndCreateRecurringTransactions();
@@ -6389,26 +6219,7 @@
 
         // Log debug info on startup
         console.log('🚀 Frugal Living App Initialized');
-        console.log('🔧 Debug tools available: window.debugFrugal');
-        console.log('📱 Current user:', appState.user);
-        
-        // Show all stored PINs for debugging
-        console.log('🔐 Stored PINs:');
-        ['demo@frugal.com', 'admin@frugal.com', 'user@example.com', 'test@budget.com'].forEach(email => {
-            const userId = email.replace(/[@.]/g, '_');
-            const pin = localStorage.getItem(`pin_${userId}`);
-            console.log(`  ${email}: ${pin || 'NOT SET'}`);
-        });
-        
-        if (appState.user) {
-            console.log('📊 Data loaded:', {
-                transactions: appState.transactions.length,
-                budgets: appState.budgets.length,
-                goals: appState.goals.length,
-                receivables: appState.receivables.length,
-                debts: appState.debts.length
-            });
-        }
+        console.log('🔧 Debug tools available in console: window.debugFrugal');
     </script>
 <script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'980b24538623f93e',t:'MTc1ODEzODcyNS4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>
