@@ -456,20 +456,20 @@
         const auth = {
             login: async (email, pin = null) => {
                 const userId = email.replace(/[@.]/g, '_');
-                let userPinHash = localStorage.getItem(`pin_${userId}`);
-                let userExists = !!userPinHash;
+                let userPinHash = localStorage.getItem(`pin_${userId}`); // Coba ambil dari lokal dulu
+                let userExistsInSystem = !!userPinHash;
                 
                 // Jika PIN tidak ada di lokal, coba sinkronisasi dari Supabase
-                if (!userPinHash && useSupabase) {
+                if (!userPinHash && useSupabase) { // Kondisi ini true di perangkat baru
                     console.log(`🤔 PIN tidak ditemukan lokal untuk ${email}. Mengecek Supabase...`);
                     const { data: dbUser, error } = await db.getUserByEmail(email);
                     
                     if (dbUser) {
-                        userExists = true;
+                        userExistsInSystem = true; // Tandai bahwa user ada di sistem
                         if (dbUser.pin) {
                             console.log(`✅ PIN ditemukan di Supabase, menyimpannya ke lokal.`);
-                            userPinHash = dbUser.pin;
-                            localStorage.setItem(`pin_${userId}`, userPinHash);
+                            userPinHash = dbUser.pin; // Ambil PIN dari database
+                            localStorage.setItem(`pin_${userId}`, userPinHash); // Simpan ke lokal untuk login berikutnya
                         } else {
                             console.log(`🤷 User ada di Supabase tapi tidak memiliki PIN.`);
                         }
@@ -477,10 +477,11 @@
                 }
 
                 // Jika setelah semua pengecekan user tetap tidak ditemukan
-                if (!userExists) {
+                if (!userExistsInSystem) {
                     if (useSupabase) {
                         return { success: false, error: 'Email tidak terdaftar. Minta admin untuk membuat akun Anda.' };
                     } else {
+                        // Fallback untuk mode lokal tanpa Supabase
                         const defaultUsers = ['demo@frugal.com', 'admin@frugal.com', 'user@example.com', 'test@budget.com'];
                         if (!defaultUsers.includes(email)) {
                             return { success: false, error: 'Email tidak terdaftar. Gunakan: demo@frugal.com, user@example.com, test@budget.com, atau minta admin untuk membuat akun Anda.' };
@@ -489,12 +490,11 @@
                 }
 
                 if (!pin) {
-                    console.log('🔐 PIN required for user:', email);
                     return { success: false, needPin: true };
                 }
                 
                 const hashedPin = await hasher.hashPin(pin, userId);
-                if (hashedPin !== userPinHash) {
+                if (!userPinHash || hashedPin !== userPinHash) {
                     return { success: false, error: 'PIN salah' };
                 }
 
