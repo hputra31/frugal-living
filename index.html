@@ -122,6 +122,13 @@
                 transform: translateY(110vh) rotate(360deg);
             }
         }
+        /* New styles for animated gradient button */
+        .animated-gradient-btn {
+            background-size: 200% auto;
+        }
+        .animated-gradient-btn:hover {
+            background-position: right center; /* Moves the gradient on hover */
+        }
     </style>
 </head>
 <body class="gradient-bg text-gray-800">
@@ -141,7 +148,7 @@
                 </div>
                 <h1 class="text-xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">Frugal Living</h1>
             </div>
-            <a href="app.html" class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-6 rounded-full transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105">
+            <a href="app.html" class="animated-gradient-btn bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-semibold py-2 px-4 sm:px-6 rounded-full transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105">
                 Masuk Aplikasi
             </a>
         </div>
@@ -156,7 +163,7 @@
             <p class="text-lg md:text-xl text-gray-600 max-w-3xl mx-auto mb-8 animate-fade-in-up" style="animation-delay: 0.2s;">
                 Frugal Living adalah aplikasi budgeting all-in-one yang membantu Anda melacak pengeluaran, membuat anggaran, dan mencapai target finansial dengan mudah.
             </p>
-            <a href="#pricing" class="bg-gradient-to-r from-yellow-500 to-orange-600 hover:from-yellow-600 hover:to-orange-700 text-white font-bold py-4 px-10 rounded-full transition-all duration-300 shadow-xl hover:shadow-2xl transform hover:scale-105 text-lg animate-fade-in-up" style="animation-delay: 0.4s;">
+            <a href="#pricing" class="bg-gradient-to-r from-yellow-500 to-orange-600 hover:from-yellow-600 hover:to-orange-700 text-white font-bold py-3 px-8 text-base md:py-4 md:px-10 md:text-lg rounded-full transition-all duration-300 shadow-xl hover:shadow-2xl transform hover:scale-105 animate-fade-in-up" style="animation-delay: 0.4s;">
                 Lihat Penawaran <i class="fas fa-tags ml-2"></i>
             </a>
         </div>
@@ -224,11 +231,17 @@
             </div>
 
             <div class="mt-12 flex justify-center">
-                <div class="bg-white/70 backdrop-blur-lg rounded-3xl p-8 md:p-12 shadow-2xl border border-white/30 max-w-lg w-full text-center fade-in-section" style="transition-delay: 200ms;">
+                <div class="bg-white/70 backdrop-blur-lg rounded-3xl p-8 md:p-12 shadow-2xl border border-white/30 max-w-lg w-full text-center fade-in-section relative overflow-hidden" style="transition-delay: 200ms;">
+                    <div class="absolute top-7 -right-10 transform rotate-45 bg-gradient-to-r from-red-500 to-orange-500 text-white text-center font-bold py-2 w-48 shadow-lg z-10">
+                        Diskon 50%
+                    </div>
                     <span class="inline-block bg-gradient-to-r from-yellow-400 to-orange-500 text-white text-sm font-bold px-4 py-1 rounded-full mb-6">AKSES LIFETIME</span>
-                    <div class="mb-6">
-                        <span class="text-5xl md:text-6xl font-extrabold">Rp 50.000</span>
-                        <span class="text-gray-500">/sekali bayar</span>
+                    <div class="mb-6 relative">
+                        <div class="flex items-end justify-center gap-3">
+                            <span class="text-3xl md:text-4xl font-semibold text-gray-400 line-through">Rp 50.000</span>
+                            <span class="text-5xl md:text-6xl font-extrabold text-indigo-600 animate-pulse">Rp 25.000</span>
+                        </div>
+                        <span class="text-gray-500 mt-1 block">/sekali bayar</span>
                     </div>
                     <ul class="space-y-4 text-gray-600 mb-8">
                         <li class="flex items-center justify-center"><i class="fas fa-check-circle text-green-500 mr-3"></i>Akses Selamanya (Lifetime)</li>
@@ -237,7 +250,7 @@
                         <li class="flex items-center justify-center"><i class="fas fa-check-circle text-green-500 mr-3"></i>Dukungan Penuh</li>
                     </ul>
                     <!-- ❗ Ganti 62... dengan nomor WhatsApp Anda -->
-                    <a href="https://wa.me/6289674135929?text=Halo%2C%20saya%20tertarik%20dengan%20penawaran%20lifetime%20Rp%2050.000%20untuk%20aplikasi%20Frugal%20Living." target="_blank" class="bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white font-bold py-4 px-10 rounded-full transition-all duration-300 shadow-xl hover:shadow-2xl transform hover:scale-105 text-lg">
+                    <a href="https://wa.me/6289674135929?text=Halo%2C%20saya%20tertarik%20dengan%20penawaran%20diskon%20lifetime%20Rp%2025.000%20untuk%20aplikasi%20Frugal%20Living." target="_blank" class="bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white font-bold py-3 px-8 text-base md:py-4 md:px-10 md:text-lg rounded-full transition-all duration-300 shadow-xl hover:shadow-2xl transform hover:scale-105">
                         Pesan Sekarang <i class="fab fa-whatsapp ml-2"></i>
                     </a>
                 </div>
@@ -363,7 +376,7 @@
     <!-- Call to Action Section -->
     <section id="cta" class="py-20">
         <div class="container mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="relative bg-gradient-to-r from-indigo-600 to-purple-700 rounded-3xl p-12 text-center shadow-2xl fade-in-section overflow-hidden">
+            <div class="relative bg-gradient-to-r from-indigo-600 to-purple-700 rounded-3xl p-8 md:p-12 text-center shadow-2xl fade-in-section overflow-hidden">
                 <div class="absolute -top-10 -left-10 w-32 h-32 bg-white/10 rounded-full mix-blend-multiply filter blur-xl opacity-70 float-animation"></div>
                 <div class="absolute -bottom-10 -right-10 w-40 h-40 bg-white/10 rounded-full mix-blend-multiply filter blur-xl opacity-70 float-animation" style="animation-delay: 1s;"></div>
                 <div class="relative z-10">
@@ -372,7 +385,7 @@
                         Dapatkan akses lifetime hanya dengan sekali bayar. Mulai perjalanan finansial Anda yang lebih baik hari ini!
                     </p>
                     <!-- ❗ Ganti 62... dengan nomor WhatsApp Anda -->
-                    <a href="https://wa.me/6281234567890?text=Halo%2C%20saya%20tertarik%20dengan%20penawaran%20lifetime%20Rp%2050.000%20untuk%20aplikasi%20Frugal%20Living." target="_blank" class="bg-white hover:bg-gray-100 text-green-600 font-bold py-4 px-10 rounded-full transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105 text-lg">
+                    <a href="https://wa.me/6289674135929?text=Halo%2C%20saya%20tertarik%20dengan%20penawaran%20diskon%20lifetime%20Rp%2025.000%20untuk%20aplikasi%20Frugal%20Living." target="_blank" class="bg-white hover:bg-gray-100 text-green-600 font-bold py-3 px-8 text-base md:py-4 md:px-10 md:text-lg rounded-full transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105">
                         Amankan Penawaran <i class="fab fa-whatsapp ml-2"></i>
                     </a>
                 </div>
@@ -390,7 +403,7 @@
     </footer>
 
     <!-- Back to Top Button -->
-    <a href="#" id="back-to-top" class="fixed bottom-8 right-8 w-12 h-12 bg-indigo-600 text-white rounded-full flex items-center justify-center shadow-lg hover:bg-indigo-700 transition-all duration-300 opacity-0 pointer-events-none">
+    <a href="#" id="back-to-top" class="fixed bottom-4 right-4 md:bottom-8 md:right-8 w-12 h-12 bg-indigo-600 text-white rounded-full flex items-center justify-center shadow-lg hover:bg-indigo-700 transition-all duration-300 opacity-0 pointer-events-none">
         <i class="fas fa-arrow-up"></i>
     </a>
 
