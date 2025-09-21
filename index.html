@@ -753,20 +753,19 @@
         async function saveTransaction(transaction) {
             if (!appState.user) return;
             
-            transaction.id = Date.now();
             transaction.user_id = appState.user.id;
             transaction.created_at = new Date().toISOString();
             
             try {
                 if (useSupabase) {
                     console.log('💾 Saving transaction to Supabase...');
-                    const { data, error } = await db.createTransaction(transaction);
+                    const { data: newTransaction, error } = await db.createTransaction(transaction);
                     if (error) {
                         console.error('❌ Supabase save error:', error);
                         showSyncStatus('error', 'Tersimpan lokal, gagal sync ke cloud');
                     } else {
-                        console.log('✅ Transaction saved to Supabase:', data);
-                        await loadUserData(); // Reload data to get the latest state
+                        console.log('✅ Transaction saved to Supabase:', newTransaction);
+                        appState.transactions.unshift(newTransaction[0]); // Optimistic UI: Add to local state
                         render();
                         showSyncStatus('success', 'Transaksi tersimpan & tersinkronisasi');
                     }
@@ -802,18 +801,17 @@
         async function createBudget(budget) {
             if (!appState.user) return;
             
-            budget.id = Date.now();
             budget.user_id = appState.user.id;
             budget.created_at = new Date().toISOString();
 
             try {
                 if (useSupabase) {
-                    const { data, error } = await db.createBudget(budget);
+                    const { data: newBudget, error } = await db.createBudget(budget);
                     if (error) {
                         showSyncStatus('error', 'Gagal sync anggaran ke cloud');
                         console.error('Supabase budget create error:', error);
                     } else {
-                        await loadUserData();
+                        appState.budgets.push(newBudget[0]);
                         render();
                         showSyncStatus('success', 'Anggaran dibuat & disinkronisasi');
                     }
@@ -821,8 +819,6 @@
             } catch (error) {
                 console.error('Error creating budget:', error);
                 showSyncStatus('error', 'Gagal membuat anggaran');
-            } finally {
-                render();
             }
         }
 
@@ -919,19 +915,18 @@
         async function createDebt(debt) {
             if (!appState.user) return;
             
-            debt.id = Date.now();
             debt.user_id = appState.user.id;
             debt.status = 'unpaid';
             debt.created_at = new Date().toISOString();
             
             try {
                 if (useSupabase) {
-                    const { data, error } = await db.createDebt(debt);
+                    const { data: newDebt, error } = await db.createDebt(debt);
                     if (error) {
                         showSyncStatus('error', 'Gagal sync utang ke cloud');
                         console.error('Supabase debt create error:', error);
                     } else {
-                        await loadUserData();
+                        appState.debts.push(newDebt[0]);
                         render();
                         showSyncStatus('success', 'Utang dicatat & disinkronisasi');
                     }
@@ -939,8 +934,6 @@
             } catch (error) {
                 console.error('Error creating debt:', error);
                 showSyncStatus('error', 'Gagal mencatat utang');
-            } finally {
-                render();
             }
         }
 
@@ -990,18 +983,17 @@
         async function createGoal(goal) {
             if (!appState.user) return;
             
-            goal.id = Date.now();
             goal.user_id = appState.user.id;
             goal.created_at = new Date().toISOString();
 
             try {
                 if (useSupabase) {
-                    const { data, error } = await db.createGoal(goal);
+                    const { data: newGoal, error } = await db.createGoal(goal);
                     if (error) {
                         showSyncStatus('error', 'Gagal sync target ke cloud');
                         console.error('Supabase goal create error:', error);
                     } else {
-                        await loadUserData();
+                        appState.goals.push(newGoal[0]);
                         render();
                         showSyncStatus('success', 'Target dibuat & disinkronisasi');
                     }
@@ -1009,8 +1001,6 @@
             } catch (error) {
                 console.error('Error creating goal:', error);
                 showSyncStatus('error', 'Gagal membuat target');
-            } finally {
-                render();
             }
         }
 
@@ -2883,7 +2873,7 @@
                                                 <br>
                                                 <div class="text-blue-400">-- 2️⃣ Transactions Table</div>
                                                 <div>CREATE TABLE IF NOT EXISTS transactions (</div>
-                                                <div>&nbsp;&nbsp;id BIGINT PRIMARY KEY,</div>
+                                                <div>&nbsp;&nbsp;id BIGSERIAL PRIMARY KEY,</div>
                                                 <div>&nbsp;&nbsp;user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,</div>
                                                 <div>&nbsp;&nbsp;type TEXT NOT NULL CHECK (type IN ('income', 'expense')),</div>
                                                 <div>&nbsp;&nbsp;amount DECIMAL(15,2) NOT NULL CHECK (amount > 0),</div>
@@ -2896,7 +2886,7 @@
                                                 <br>
                                                 <div class="text-blue-400">-- 3️⃣ Budgets Table</div>
                                                 <div>CREATE TABLE IF NOT EXISTS budgets (</div>
-                                                <div>&nbsp;&nbsp;id BIGINT PRIMARY KEY,</div>
+                                                <div>&nbsp;&nbsp;id BIGSERIAL PRIMARY KEY,</div>
                                                 <div>&nbsp;&nbsp;user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,</div>
                                                 <div>&nbsp;&nbsp;category TEXT NOT NULL,</div>
                                                 <div>&nbsp;&nbsp;amount DECIMAL(15,2) NOT NULL CHECK (amount > 0),</div>
@@ -2908,7 +2898,7 @@
                                                 <br>
                                                 <div class="text-blue-400">-- 4️⃣ Goals Table</div>
                                                 <div>CREATE TABLE IF NOT EXISTS goals (</div>
-                                                <div>&nbsp;&nbsp;id BIGINT PRIMARY KEY,</div>
+                                                <div>&nbsp;&nbsp;id BIGSERIAL PRIMARY KEY,</div>
                                                 <div>&nbsp;&nbsp;user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,</div>
                                                 <div>&nbsp;&nbsp;title TEXT NOT NULL,</div>
                                                 <div>&nbsp;&nbsp;target_amount DECIMAL(15,2) NOT NULL CHECK (target_amount > 0),</div>
@@ -2920,7 +2910,7 @@
                                                 <br>
                                                 <div class="text-blue-400">-- 5️⃣ Receivables Table (Piutang)</div>
                                                 <div>CREATE TABLE IF NOT EXISTS receivables (</div>
-                                                <div>&nbsp;&nbsp;id BIGINT PRIMARY KEY,</div>
+                                                <div>&nbsp;&nbsp;id BIGSERIAL PRIMARY KEY,</div>
                                                 <div>&nbsp;&nbsp;user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,</div>
                                                 <div>&nbsp;&nbsp;debtor_name TEXT NOT NULL,</div>                                                
                                                 <div>&nbsp;&nbsp;target_amount DECIMAL(15,2) NOT NULL,</div>
@@ -2934,7 +2924,7 @@
                                                 <br>
                                                 <div class="text-blue-400">-- 6️⃣ Debts Table (Utang)</div>
                                                 <div>CREATE TABLE IF NOT EXISTS debts (</div>
-                                                <div>&nbsp;&nbsp;id BIGINT PRIMARY KEY,</div>
+                                                <div>&nbsp;&nbsp;id BIGSERIAL PRIMARY KEY,</div>
                                                 <div>&nbsp;&nbsp;user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,</div>
                                                 <div>&nbsp;&nbsp;creditor_name TEXT NOT NULL,</div>                                                
                                                 <div>&nbsp;&nbsp;target_amount DECIMAL(15,2) NOT NULL,</div>
@@ -2960,15 +2950,29 @@
                                                 <div>ALTER TABLE goals ENABLE ROW LEVEL SECURITY;</div>
                                                 <div>ALTER TABLE receivables ENABLE ROW LEVEL SECURITY;</div>
                                                 <div>ALTER TABLE debts ENABLE ROW LEVEL SECURITY;</div>
+                                                <br>                                                
+                                                <div class="text-orange-400">-- 8️⃣ Create SECURE RLS Policies</div>
+                                                <div class="text-yellow-400">-- This is the most important security step.</div>
+                                                <div class="text-yellow-400">-- It ensures users can only access their own data.</div>
                                                 <br>
-                                                <div class="text-orange-400">-- 8️⃣ Create RLS Policies (Optional - for enhanced security)</div>
-                                                <div>-- Users can only see their own data</div>
-                                                <div>CREATE POLICY "Users can view own data" ON users FOR ALL USING (true);</div>
-                                                <div>CREATE POLICY "Users can manage own transactions" ON transactions FOR ALL USING (true);</div>
-                                                <div>CREATE POLICY "Users can manage own budgets" ON budgets FOR ALL USING (true);</div>
-                                                <div>CREATE POLICY "Users can manage own goals" ON goals FOR ALL USING (true);</div>
-                                                <div>CREATE POLICY "Users can manage own receivables" ON receivables FOR ALL USING (true);</div>
-                                                <div>CREATE POLICY "Users can manage own debts" ON debts FOR ALL USING (true);</div>
+                                                <div class="text-gray-400">-- Drop old insecure policies if they exist</div>
+                                                <div>DROP POLICY IF EXISTS "Users can view own data" ON public.users;</div>
+                                                <div>DROP POLICY IF EXISTS "Users can manage own transactions" ON public.transactions;</div>
+                                                <div>DROP POLICY IF EXISTS "Users can manage own budgets" ON public.budgets;</div>
+                                                <div>DROP POLICY IF EXISTS "Users can manage own goals" ON public.goals;</div>
+                                                <div>DROP POLICY IF EXISTS "Users can manage own receivables" ON public.receivables;</div>
+                                                <div>DROP POLICY IF EXISTS "Users can manage own debts" ON public.debts;</div>
+                                                <br>
+                                                <div class="text-gray-400">-- Create new SECURE policies</div>
+                                                <div>CREATE POLICY "Users can manage their own transactions" ON public.transactions FOR ALL USING (auth.uid()::text = user_id);</div>
+                                                <div>CREATE POLICY "Users can manage their own budgets" ON public.budgets FOR ALL USING (auth.uid()::text = user_id);</div>
+                                                <div>CREATE POLICY "Users can manage their own goals" ON public.goals FOR ALL USING (auth.uid()::text = user_id);</div>
+                                                <div>CREATE POLICY "Users can manage their own receivables" ON public.receivables FOR ALL USING (auth.uid()::text = user_id);</div>
+                                                <div>CREATE POLICY "Users can manage their own debts" ON public.debts FOR ALL USING (auth.uid()::text = user_id);</div>
+                                                <br>
+                                                <div class="text-gray-400">-- Policies for the users table itself</div>
+                                                <div>CREATE POLICY "Users can view their own profile" ON public.users FOR SELECT USING (auth.uid()::text = id);</div>
+                                                <div>CREATE POLICY "Users can update their own profile" ON public.users FOR UPDATE USING (auth.uid()::text = id);</div>
                                                 <br>
                                                 <div class="text-green-400">-- 9️⃣ Insert Sample Users with PINs (Optional)</div>
                                                 <div>INSERT INTO users (id, email, name, pin, role) VALUES</div>
@@ -4554,19 +4558,18 @@
         async function createReceivable(receivable) { // Renamed from saveReceivable
             if (!appState.user) return;
             
-            receivable.id = Date.now();
             receivable.user_id = appState.user.id;
             receivable.status = 'unpaid';
             receivable.created_at = new Date().toISOString();
             
             try {
                 if (useSupabase) {
-                    const { data, error } = await db.createReceivable(receivable);
+                    const { data: newReceivable, error } = await db.createReceivable(receivable);
                     if (error) {
                         showSyncStatus('error', 'Gagal sync piutang ke cloud');
                         console.error('Supabase receivable create error:', error);
                     } else {
-                        await loadUserData();
+                        appState.receivables.push(newReceivable[0]);
                         render();
                         showSyncStatus('success', 'Piutang dicatat & disinkronisasi');
                     }
@@ -4574,9 +4577,6 @@
             } catch (error) {
                 console.error('Error creating receivable:', error);
                 showSyncStatus('error', 'Gagal mencatat piutang');
-                appState.receivables.pop(); // Rollback
-            } finally {
-                render();
             }
         }
 
