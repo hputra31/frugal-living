@@ -456,46 +456,45 @@
         const auth = {
             login: async (email, pin = null) => {
                 const userId = email.replace(/[@.]/g, '_');
-                let storedPin = localStorage.getItem(`pin_${userId}`);
+                let userPinHash = localStorage.getItem(`pin_${userId}`);
+                let userExists = !!userPinHash;
                 
-                if (!storedPin) {
-                    // If PIN is not in localStorage, check if user exists in Supabase
-                    if (useSupabase) {
-                        console.log(`🤔 PIN not found locally for ${email}. Checking Supabase...`);
-                        const { data: dbUser, error } = await db.getUserByEmail(email);
-                        
-                        if (dbUser) {
-                            console.log(`✅ User ${email} found in Supabase. Proceeding to PIN check.`);
-                            // User exists in the database, but no local PIN.
-                            // We can't get the PIN from DB, but we know they need to enter one.
-                            // The logic below will handle the PIN check.
+                // Jika PIN tidak ada di lokal, coba sinkronisasi dari Supabase
+                if (!userPinHash && useSupabase) {
+                    console.log(`🤔 PIN tidak ditemukan lokal untuk ${email}. Mengecek Supabase...`);
+                    const { data: dbUser, error } = await db.getUserByEmail(email);
+                    
+                    if (dbUser) {
+                        userExists = true;
+                        if (dbUser.pin) {
+                            console.log(`✅ PIN ditemukan di Supabase, menyimpannya ke lokal.`);
+                            userPinHash = dbUser.pin;
+                            localStorage.setItem(`pin_${userId}`, userPinHash);
                         } else {
-                            // User not in Supabase and not in local PIN list, so they are not registered.
-                            return { success: false, error: 'Email tidak terdaftar. Gunakan: demo@frugal.com, user@example.com, test@budget.com, atau minta admin untuk membuat akun Anda.' };
+                            console.log(`🤷 User ada di Supabase tapi tidak memiliki PIN.`);
                         }
+                    }
+                }
+
+                // Jika setelah semua pengecekan user tetap tidak ditemukan
+                if (!userExists) {
+                    if (useSupabase) {
+                        return { success: false, error: 'Email tidak terdaftar. Minta admin untuk membuat akun Anda.' };
                     } else {
-                        // If not using Supabase and no local PIN, check against default users.
                         const defaultUsers = ['demo@frugal.com', 'admin@frugal.com', 'user@example.com', 'test@budget.com'];
                         if (!defaultUsers.includes(email)) {
                             return { success: false, error: 'Email tidak terdaftar. Gunakan: demo@frugal.com, user@example.com, test@budget.com, atau minta admin untuk membuat akun Anda.' };
                         }
                     }
                 }
-                
-                // If we are here, the user is considered valid and needs a PIN.
-                // Re-fetch the stored PIN in case it was initialized for a default user.
-                storedPin = localStorage.getItem(`pin_${userId}`);
 
                 if (!pin) {
                     console.log('🔐 PIN required for user:', email);
                     return { success: false, needPin: true };
                 }
                 
-                // Hash the input PIN and compare it with the stored hash
                 const hashedPin = await hasher.hashPin(pin, userId);
-                // Check if PIN matches
-                console.log('🔍 Checking PIN hash for', email);
-                if (storedPin && hashedPin !== storedPin) {
+                if (hashedPin !== userPinHash) {
                     return { success: false, error: 'PIN salah' };
                 }
 
@@ -1271,8 +1270,8 @@
                     } lg:translate-x-0 transition-transform duration-300 ease-in-out border-r border-white/20 dark:bg-slate-800/90 dark:border-slate-700">
                         <div class="flex flex-col h-full pt-20">
                             <!-- User Profile Section -->
-                            <div class="px-6 py-4 border-b border-gray-100 dark:border-slate-700">
-                                <div class="flex items-center justify-between">
+                            <div class="px-6 py-4">
+                                <div class="flex items-center">
                                     <div class="w-12 h-12 bg-gradient-to-br from-indigo-400 to-purple-500 rounded-2xl flex items-center justify-center shadow-lg">
                                         <i class="fas fa-user text-white text-lg"></i>
                                     </div>
@@ -1280,18 +1279,22 @@
                                         <p class="font-semibold text-gray-800 dark:text-gray-100">Selamat Datang!</p>
                                         <p class="text-sm text-gray-500 truncate dark:text-gray-400">${appState.user.email}</p>
                                     </div>
-                                    <button
-                                        onclick="handleLogout()"
-                                        title="Keluar"
-                                        class="ml-2 flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-xl font-semibold text-red-600 hover:bg-red-50 hover:text-red-700 transition-all duration-300 group dark:text-red-400 dark:hover:bg-red-500/10 dark:hover:text-red-300"
-                                    >
-                                        <i class="fas fa-sign-out-alt text-lg group-hover:scale-110 transition-transform"></i>
-                                    </button>
                                 </div>
                             </div>
                             
-                            <div class="flex-1 px-4 py-6 space-y-2">
+                            <div class="flex-1 px-4 py-6 space-y-2 border-t border-gray-100 dark:border-slate-700 overflow-y-auto">
                                 ${renderMenuItems()}
+                            </div>
+
+                            <!-- Logout Button at the bottom -->
+                            <div class="px-4 py-4 border-t border-gray-100 dark:border-slate-700">
+                                <button
+                                    onclick="handleLogout()"
+                                    class="w-full flex items-center px-4 py-3 text-left rounded-2xl font-semibold transition-all duration-300 group text-red-600 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-500/10 dark:hover:text-red-300"
+                                >
+                                    <i class="fas fa-sign-out-alt mr-3 w-5 group-hover:scale-110 transition-transform"></i>
+                                    Keluar
+                                </button>
                             </div>
                         </div>
                     </div>
