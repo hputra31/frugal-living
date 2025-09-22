@@ -4362,10 +4362,10 @@
         async function saveDebt(debt) { // Renamed from createDebt
             if (!appState.user) return;
             
-            receivable.id = Date.now();
-            receivable.user_id = appState.user.id;
-            receivable.status = 'unpaid';
-            receivable.created_at = new Date().toISOString();
+            debt.id = Date.now();
+            debt.user_id = appState.user.id;
+            debt.status = 'unpaid';
+            debt.created_at = new Date().toISOString();
             
             try {
                 if (useSupabase) {
