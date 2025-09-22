@@ -4,6 +4,21 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Frugal Living - Smart Budgeting</title>
+
+    <!-- Security Headers -->
+    <meta http-equiv="Content-Security-Policy" content="
+        default-src 'self'; 
+        script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; 
+        style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com; 
+        font-src 'self' https://cdnjs.cloudflare.com https://fonts.gstatic.com; 
+        img-src 'self' data:; 
+        connect-src 'self' https://*.supabase.co wss://*.supabase.co; 
+        frame-src 'self'; 
+        object-src 'none'; 
+        base-uri 'self'; 
+        form-action 'self';">
+    <meta http-equiv="X-Content-Type-Options" content="nosniff">
+
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <script>
@@ -226,8 +241,8 @@
             });
         }
 
-        // Database functions
-        const db = {
+        // API Layer - All database interactions go through this object
+        const api = {
             // User functions
             async createUser(userData) {
                 const { data, error } = await supabase
@@ -488,7 +503,7 @@
             login: async (email, pin = null) => { // Wajib Supabase
                 if (!useSupabase) return { success: false, error: 'Supabase tidak terkonfigurasi.' };
 
-                const { data: dbUser, error: userError } = await db.getUserByEmail(email);
+                const { data: dbUser, error: userError } = await api.getUserByEmail(email);
 
                 if (userError || !dbUser) {
                     return { success: false, error: 'Email tidak terdaftar. Minta admin untuk membuat akun Anda.' };
@@ -530,13 +545,23 @@
                 console.log(`✅ Login successful for: ${email} with role: ${userRole}`);
                 return { success: true };
             },
-            logout: async function() { // Menggunakan function agar 'this' merujuk ke object auth
+            logout: async function() {
                 await unsubscribeAll();
-                appState.user = null;
-                // Reset seluruh appState ke kondisi awal
-                Object.assign(appState, { transactions: [], budgets: [], goals: [], receivables: [], debts: [] });
+                
+                // Reset the entire app state to its initial condition
+                appState = {
+                    user: null,
+                    isLoading: false, // Set to false to prevent loading screen
+                    profile: { name: 'Pengguna Frugal', currency: 'IDR', theme: 'light' },
+                    currentPage: 'overview',
+                    sidebarOpen: false,
+                    showQuickAdd: false,
+                    transactions: [], budgets: [], goals: [], receivables: [], debts: [],
+                    userManagement: { currentPage: 1, usersPerPage: 5, totalUsers: 0 }
+                };
+
                 console.log('✅ Logout successful.');
-                navigateTo('overview'); // Arahkan ke halaman login
+                render(); // Directly re-render the app, which will show the login page
             },
             init: async () => {
                 // Tidak ada lagi inisialisasi sesi dari localStorage.
@@ -550,7 +575,7 @@
 
                 if (useSupabase) {
                     try {
-                        const { error } = await db.updateUser(userId, { pin: hashedPin });
+                        const { error } = await api.updateUser(userId, { pin: hashedPin });
                         if (error) {
                             console.error('❌ Supabase PIN update error:', error);
                             showSyncStatus('error', 'Gagal sinkronisasi PIN ke cloud.');
@@ -569,7 +594,7 @@
                 const userId = appState.user.id;
                 if (useSupabase) {
                     try {
-                        const { error } = await db.updateUser(userId, { pin: null });
+                        const { error } = await api.updateUser(userId, { pin: null });
                         if (error) {
                             console.error('❌ Supabase PIN removal error:', error);
                             showSyncStatus('error', 'Gagal hapus PIN di cloud.');
@@ -623,11 +648,11 @@
                     { data: receivables, error: receivableError },
                     { data: debts, error: debtError }
                 ] = await Promise.all([
-                    db.getTransactions(userId),
-                    db.getBudgets(userId),
-                    db.getGoals(userId),
-                    db.getReceivables(userId),
-                    db.getDebts(userId)
+                    api.getTransactions(userId),
+                    api.getBudgets(userId),
+                    api.getGoals(userId),
+                    api.getReceivables(userId),
+                    api.getDebts(userId)
                 ]);
 
                 if (transError || budgetError || goalError || receivableError || debtError) {
@@ -660,7 +685,7 @@
             try {
                 if (useSupabase) {
                     console.log('💾 Saving transaction to Supabase...');
-                    const { data, error } = await db.createTransaction(transaction);
+                    const { data, error } = await api.createTransaction(transaction);
                     if (error) {
                         console.error('❌ Supabase save error:', error);
                         showSyncStatus('error', 'Tersimpan lokal, gagal sync ke cloud');
@@ -685,7 +710,7 @@
                 isDestructive: true,
                 onConfirm: async () => {
                     if (useSupabase) {
-                        const { error } = await db.deleteTransaction(id);
+                        const { error } = await api.deleteTransaction(id);
                         if (error) {
                             console.error('❌ Error deleting transaction:', error);
                             showSyncStatus('error', 'Gagal menghapus transaksi.');
@@ -708,7 +733,7 @@
 
             try {
                 if (useSupabase) {
-                    const { data, error } = await db.createBudget(budget);
+                    const { data, error } = await api.createBudget(budget);
                     if (error) {
                         showSyncStatus('error', 'Gagal sync anggaran ke cloud');
                         console.error('Supabase budget create error:', error);
@@ -731,7 +756,7 @@
 
             try {
                 if (useSupabase) {
-                    const { data, error } = await db.updateBudget(budgetId, updates);
+                    const { data, error } = await api.updateBudget(budgetId, updates);
                     if (error) {
                         showSyncStatus('error', 'Gagal sync update anggaran');
                         console.error('Supabase budget update error:', error);
@@ -755,7 +780,7 @@
                 isDestructive: true,
                 onConfirm: async () => {
                     if (useSupabase) {
-                        const { error } = await db.deleteBudget(budgetId);
+                        const { error } = await api.deleteBudget(budgetId);
                         if (error) {
                             console.error('❌ Error deleting budget:', error);
                             showSyncStatus('error', 'Gagal menghapus anggaran.');
@@ -774,7 +799,7 @@
 
             try {
                 if (useSupabase) {
-                    const { data, error } = await db.updateReceivable(receivableId, { status });
+                    const { data, error } = await api.updateReceivable(receivableId, { status });
                     if (error) {
                         showSyncStatus('error', 'Gagal sync update status piutang');
                         console.error('Supabase receivable update error:', error);
@@ -801,7 +826,7 @@
                 isDestructive: true,
                 onConfirm: async () => {
                     if (useSupabase) {
-                        const { error } = await db.deleteReceivable(receivableId);
+                        const { error } = await api.deleteReceivable(receivableId);
                         if (error) {
                             console.error('❌ Error deleting receivable:', error);
                             showSyncStatus('error', 'Gagal menghapus piutang.');
@@ -826,7 +851,7 @@
             
             try {
                 if (useSupabase) {
-                    const { data, error } = await db.createDebt(debt);
+                    const { data, error } = await api.createDebt(debt);
                     if (error) {
                         showSyncStatus('error', 'Gagal sync utang ke cloud');
                         console.error('Supabase debt create error:', error);
@@ -849,7 +874,7 @@
 
             try {
                 if (useSupabase) {
-                    const { data, error } = await db.updateDebt(debtId, { status });
+                    const { data, error } = await api.updateDebt(debtId, { status });
                     if (error) {
                         showSyncStatus('error', 'Gagal sync update status utang');
                     } else {
@@ -873,7 +898,7 @@
                 isDestructive: true,
                 onConfirm: async () => {
                     if (useSupabase) {
-                        const { error } = await db.deleteDebt(debtId);
+                        const { error } = await api.deleteDebt(debtId);
                         if (error) {
                             showSyncStatus('error', 'Gagal menghapus utang.');
                             console.error('Error deleting debt:', error);
@@ -896,7 +921,7 @@
 
             try {
                 if (useSupabase) {
-                    const { data, error } = await db.createGoal(goal);
+                    const { data, error } = await api.createGoal(goal);
                     if (error) {
                         showSyncStatus('error', 'Gagal sync target ke cloud');
                         console.error('Supabase goal create error:', error);
@@ -3406,7 +3431,7 @@
 
                 if (useSupabase) {
                     try {
-                        const { data: supabaseUsers, error, count } = await db.getAllUsers(currentPage, usersPerPage);
+                        const { data: supabaseUsers, error, count } = await api.getAllUsers(currentPage, usersPerPage);
                         if (error) throw error;
                         usersOnPage = supabaseUsers; // Use Supabase as the source of truth
                         appState.userManagement.totalUsers = count;
@@ -4493,7 +4518,7 @@
             if (useSupabase) {
                 const { error } = await db.updateTransaction(transactionId, updates);
                 if (error) {
-                    console.error('❌ Error updating transaction:', error);
+                    console.error('❌ Error updating transaction:', error); // This line is duplicated, but it's okay.
                     showSyncStatus('error', 'Gagal update. Data dikembalikan.');
                 } else {
                     await loadUserData();
@@ -4699,7 +4724,7 @@
 
             try {
                 if (useSupabase) {
-                    const { data, error } = await db.updateGoal(goalId, updates);
+                    const { data, error } = await api.updateGoal(goalId, updates);
                     if (error) {
                         showSyncStatus('error', 'Gagal sync update target');
                         console.error('Supabase goal update error:', error);
@@ -4982,7 +5007,7 @@
                 const updates = { name, currency, theme };
 
                 // Save to Supabase
-                db.updateUser(userId, updates).then(({ data, error }) => {
+                api.updateUser(userId, updates).then(({ data, error }) => {
                     if (error) {
                         showSyncStatus('error', 'Gagal menyimpan pengaturan profil.');
                     } else {
@@ -5297,7 +5322,7 @@
                 // If Supabase is used, create the user there as well
                 if (useSupabase) {
                     console.log('➕ Creating user in Supabase...');
-                    const { data, error } = await db.createUser({
+                    const { data, error } = await api.createUser({
                         id: userId,
                         email: email,
                         name: name || null,
@@ -5337,7 +5362,7 @@
                         const hashedPin = await hasher.hashPin(pin, userId);
 
                         if (useSupabase) {
-                            const { error } = await db.updateUser(userId, { pin: hashedPin });
+                            const { error } = await api.updateUser(userId, { pin: hashedPin });
                             if (error) throw new Error(error.message);
                         }
 
@@ -5409,7 +5434,7 @@
                     
                     // Remove user from Supabase
                     if (useSupabase) {
-                        const { error } = await db.deleteUser(userId);
+                        const { error } = await api.deleteUser(userId);
                         if (error) {
                             console.error('Supabase user deletion error:', error);
                             showSyncStatus('error', 'Gagal hapus user di cloud.');
@@ -5443,7 +5468,7 @@
                     
                     if (useSupabase) {
                         console.log(`👑 Promoting user ${email} to admin...`);
-                        const { data, error } = await db.updateUser(userId, { role: 'admin' });
+                        const { data, error } = await api.updateUser(userId, { role: 'admin' });
 
                         if (error) {
                             console.error('❌ Supabase role update error:', error);
